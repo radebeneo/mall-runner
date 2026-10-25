@@ -150,6 +150,20 @@ export function requireRepayment(session: Session): RepaymentResult {
 // Player actions
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * Adds the runner's coin points to the run's total through the engine. Points are game points,
+ * never money (AGENTS.md section 3).
+ */
+export function bankRunPoints(session: Session, points: number): Session {
+  if (points === 0) return session;
+  return { ...session, state: awardPoints(session.state, points) };
+}
+
+/** The HUD's points while running: the run's total plus coins collected but not yet banked. */
+export function hudPointsWithRun(session: Session, runPoints: number): number {
+  return awardPoints(session.state, runPoints).points;
+}
+
 /** The player picked up the glowing shopping bag. */
 export function openOffer(session: Session): Session {
   if (pendingOffer(session) === undefined) throw new Error('There is no offer this month.');

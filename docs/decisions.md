@@ -276,3 +276,69 @@ other scenario variants from AGENTS.md section 5 come later.
   flow was verified through `App.test.tsx` and by comparing each screen's code with its mockup.
 - The Vitest forks pool times out starting workers on this Windows machine; `--pool=threads`
   runs reliably and is used for local runs.
+
+## 2026-10-26 — Milestone 5: runner prototype
+
+### Game core (`packages/game-core`, no React or Three.js)
+
+- Lane space: x runs across the lanes (`laneWidth` 1.6), y is up and z is the distance ahead. The
+  player stays at z = 0 and the world scrolls toward it.
+- Loop: fixed step of 1/60 s, frames clamped to 0.1 s, with `STEP_EPSILON = 1e-9`. The render
+  callback gets an interpolation `alpha`, so motion stays smooth between steps.
+- Track: seeded (mulberry32) and pooled, with 8 chunks of 24 m and 96 entities. The first chunk
+  holds only coins. Every 10th chunk is `OFFER_PATTERN`, with the bag in lane 1, and
+  `TrackPattern.offerLane` marks the pink lane.
+- Obstacles: `WET_FLOOR` is jumped, `BANNER` is rolled under (its bottom is at 1.1 m) and `CART`
+  needs a lane change. Collision is custom AABB, with no physics engine.
+- Hits: the first hit is a stumble (0.7× speed for 4 s). A second hit during the stumble is a
+  crash. Hits within 0.8 s of the first are ignored.
+- Input: swipes and arrow keys, with one buffered action, so a swipe made mid-jump still counts.
+- The app hooks in through `RunnerEvents` (`onCoin`, `onStumble`, `onCrash`, `onBag`). Per-frame
+  values stay in plain `RunnerState` objects.
+- ESLint bans React and `three` in `game-core`. Its coverage is 100%.
+
+### Scene (`apps/web/src/scenes`)
+
+- The existing art can't be used in 3D:
+  - `mall-background.jpg` has the HUD baked in.
+  - `character-back.png` is cut off at the legs.
+- The mall and the runner are therefore low-poly geometry that follows `gameplay-screen.png`:
+  - Tiled floor, white lane lines and the pink offer lane.
+  - Shopfronts on two levels, balconies, pillars, lamps and a skylight.
+  - Coins, wet-floor signs, cleaning carts, sale banners and the glowing bag.
+  - A green-shirt runner seen from behind.
+- Signs have no text and show no real brands.
+- Each entity kind is one merged, vertex-coloured `InstancedMesh`, so it costs one draw call.
+- Decor scrolls in a seamless loop, and the floor texture's offset scrolls with it.
+- Frames don't allocate: scratch objects are reused and instance matrices are written in place.
+- DPR is capped at 2.
+- `createMallScene` throws when WebGL is unavailable. The run screen then offers decisions-only
+  play, which also keeps the jsdom tests working without WebGL.
+
+### Run screen and store
+
+- `RunScreen` owns the scene, simulation and loop in refs, created and disposed in an effect, which
+  handles StrictMode's double mount. React state holds only the overlay, the stumble notice and
+  the coin points.
+- The offer label follows the bag through a DOM transform, written only when its position changes.
+- The game surface has `touch-action: none` and `overscroll-behavior: none`.
+- Pausing:
+  - The pause button, Escape or P pause the run, and so does hiding the tab.
+  - The pause card has Resume, "See the offer" (when there is one) and "Finish shopping".
+  - The crash card has "Run again" and "Finish shopping".
+- The store has a `mode` (`RUNNER` or `DECISIONS`). `start(mode?)` keeps the current mode when
+  replaying, and `setMode` switches without ending the run.
+- The title screen has "Start running" and "Decisions only".
+- Coin points are banked through the engine's `awardPoints` (`bankRunPoints`, `finishRun`,
+  `openRunOffer`). The HUD shows the banked points plus the unbanked coins.
+- In this milestone the bag is a visual marker; the offer opens from the pause card. Automatic
+  triggers from the runner, and a month timer, belong to milestone 6.
+
+### Verification and follow-ups
+
+- 365 tests pass. Statements, functions and lines are at 100% coverage, branches at 99.8%.
+- CM Browser couldn't take screenshots, so the scene hasn't been compared visually with
+  `gameplay-screen.png` yet. It still needs a check in a real browser and on a low-end Android
+  device.
+- With Three.js the main chunk is about 887 kB (241 kB gzipped), so Vite warns about chunk size.
+  Code-splitting the run screen with `import()` is planned for the PWA milestone.

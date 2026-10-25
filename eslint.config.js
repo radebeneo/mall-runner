@@ -81,10 +81,7 @@ export default defineConfig([
               group: ['@credit-runner/*'],
               message: 'game-core imports nothing from the repo.',
             },
-            {
-              group: ['react', 'react/*', 'react-dom', 'react-dom/*'],
-              message: 'game-core must not depend on React (AGENTS.md section 2).',
-            },
+            ...noUiOrRenderer,
           ],
         },
       ],

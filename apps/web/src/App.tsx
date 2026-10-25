@@ -6,6 +6,7 @@ import { MonthScreen } from './screens/MonthScreen';
 import { MonthSummaryScreen } from './screens/MonthSummaryScreen';
 import { OfferScreen } from './screens/OfferScreen';
 import { PayPlanScreen } from './screens/PayPlanScreen';
+import { RunScreen } from './screens/RunScreen';
 import { StatementScreen } from './screens/StatementScreen';
 import { TitleScreen } from './screens/TitleScreen';
 import {
@@ -79,9 +80,15 @@ function panelWidth(session: Session): string {
   }
 }
 
-// Decisions-only mode (milestone 4). The runner arrives in milestone 5.
 export function App() {
   const session = useGameStore((store) => store.session);
+  const mode = useGameStore((store) => store.mode);
+
+  // Runner mode: the 3D mall takes the whole screen while the month's shopping runs. In
+  // decisions-only mode the month screen stands in for it.
+  if (session !== null && mode === 'RUNNER' && session.cycle.phase === 'RUNNING') {
+    return <RunScreen key={screenKey(session)} session={session} />;
+  }
 
   return (
     <div className="min-h-dvh pb-8">

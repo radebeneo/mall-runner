@@ -46,7 +46,7 @@ function answerButtons(prompt: string): HTMLElement[] {
 }
 
 beforeEach(() => {
-  useGameStore.setState({ session: null });
+  useGameStore.setState({ session: null, mode: 'DECISIONS' });
 });
 
 afterEach(() => {
@@ -68,7 +68,7 @@ describe('decisions-only app', () => {
 
     // Title
     expectDisclaimer();
-    await user.click(screen.getByRole('button', { name: 'Start' }));
+    await user.click(screen.getByRole('button', { name: 'Decisions only' }));
 
     // Month 1: the mall trip, with an offer waiting.
     expect(screen.getByRole('heading', { level: 1, name: 'Shopping at the mall' })).toBeTruthy();
@@ -170,7 +170,7 @@ describe('decisions-only app', () => {
   it('reveals the minimum-only alternative after paying in full', async () => {
     const user = userEvent.setup();
     render(<App />);
-    await user.click(screen.getByRole('button', { name: 'Start' }));
+    await user.click(screen.getByRole('button', { name: 'Decisions only' }));
     await user.click(screen.getByRole('button', { name: 'See the offer' }));
     await user.click(screen.getByRole('radio', { name: /Take the offer/ }));
     await user.click(screen.getByRole('button', { name: 'Confirm' }));
@@ -202,6 +202,24 @@ describe('decisions-only app', () => {
     await user.click(toggle);
     expect(toggle.getAttribute('aria-checked')).toBe('false');
     expect(screen.queryByText('Carried forward and charged interest')).toBeNull();
+  });
+
+  it('offers decisions-only play when the 3D mall cannot start', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole('button', { name: 'Start running' }));
+    expect(useGameStore.getState().mode).toBe('RUNNER');
+
+    // jsdom has no WebGL, so the runner cannot start and says so.
+    const fallback = await screen.findByRole('button', { name: 'Play decisions only' });
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'The 3D mall can’t start here.' }),
+    ).toBeTruthy();
+    expectDisclaimer();
+    await user.click(fallback);
+
+    expect(useGameStore.getState().mode).toBe('DECISIONS');
+    expect(screen.getByRole('heading', { level: 1, name: 'Shopping at the mall' })).toBeTruthy();
   });
 
   it('runs the final quiz and the run summary on one screen', async () => {

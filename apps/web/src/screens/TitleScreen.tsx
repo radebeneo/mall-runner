@@ -1,5 +1,6 @@
 // The title screen. There is no mockup for it, so it reuses the decision screens' visual
-// language: the cream panel, coloured icon tiles and the mint disclaimer.
+// language: the cream panel, coloured icon tiles and the mint disclaimer. The player chooses the
+// runner or the decisions-only mode (AGENTS.md section 7, rule 7).
 import { Button, Disclaimer, IconTile, ScreenPanel } from '@credit-runner/ui';
 import type { IconName, TileTone } from '@credit-runner/ui';
 import { loadStarterScenario } from '../session/session';
@@ -16,8 +17,8 @@ const STEPS: readonly Step[] = [
   {
     icon: 'bag',
     tone: 'green',
-    title: 'Shop at the mall',
-    body: 'Your purchases go on the card. Watch for offers and surprise costs.',
+    title: 'Run the mall',
+    body: 'Dodge obstacles and collect coins. Your purchases go on the card; watch for offers and surprise costs.',
   },
   {
     icon: 'document',
@@ -45,7 +46,7 @@ export function TitleScreen() {
 
   return (
     <ScreenPanel
-      badge="Decisions-only mode"
+      badge="Fictional learning game"
       icon={{ name: 'card', tone: 'green' }}
       title="Credit Runner"
       intro={scenario.summary}
@@ -69,7 +70,24 @@ export function TitleScreen() {
           ))}
         </ol>
       </section>
-      <Button onClick={start}>Start</Button>
+      <Button
+        onClick={() => {
+          start('RUNNER');
+        }}
+      >
+        Start running
+      </Button>
+      <Button
+        variant="secondary"
+        onClick={() => {
+          start('DECISIONS');
+        }}
+      >
+        Decisions only
+      </Button>
+      <p className="text-center text-sm leading-snug text-ink-muted">
+        Decisions only skips the runner and goes straight to each month’s choices.
+      </p>
       <Disclaimer variant="mint" />
     </ScreenPanel>
   );

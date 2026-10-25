@@ -352,7 +352,13 @@ export function FinishScreen({ session }: { session: Session }) {
 
         {finished ? (
           <div className="grid gap-3 sm:grid-cols-2">
-            <Button trailingIcon="chevron-right" onClick={start}>
+            <Button
+              trailingIcon="chevron-right"
+              onClick={() => {
+                // Replays in the same mode as this run.
+                start();
+              }}
+            >
               Try another scenario
             </Button>
             <Button
