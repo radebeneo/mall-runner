@@ -1,0 +1,11 @@
+node_modules
+dist
+dev-dist
+coverage
+pnpm-lock.yaml
+*.png
+
+# Owner-authored brief and tool config; keep as written
+AGENTS.md
+opencode_setup.md
+opencode.json

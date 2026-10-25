@@ -1,0 +1,41 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "anthropic/claude-opus-5-5",
+  "agent": {
+    "engine": {
+      "description": "Builds and tests the pure TypeScript finance engine and scenario schemas. Correctness over speed.",
+      "mode": "subagent",
+      "model": "anthropic/claude-opus-5-5",
+      "prompt": "You own packages/finance-engine and packages/scenarios. Read AGENTS.md sections 4 and 5 first. Money is integer cents. Functions are pure and deterministic. No UI, DOM or Three.js imports. Write tests before or alongside every function. The fixtures in AGENTS.md section 4 must pass exactly."
+    },
+    "ui": {
+      "description": "Builds React decision screens, HUD and quiz from the finance engine's outputs.",
+      "mode": "subagent",
+      "model": "REPLACE_WITH_PROVIDER/MODEL_FOR_UI",
+      "prompt": "You own packages/ui and apps/web/src/screens. Every number shown comes from the finance engine; do no arithmetic in components. Mobile first at 390px, AA contrast, keyboard navigable. Match the mockups' tokens: green primary, cream cards, dark HUD."
+    },
+    "runner": {
+      "description": "Builds the Three.js runner: loop, pooled track chunks, lanes, input, AABB collisions.",
+      "mode": "subagent",
+      "model": "REPLACE_WITH_PROVIDER/MODEL_FOR_RUNNER",
+      "prompt": "You own packages/game-core and apps/web/src/scenes. Never put per-frame values in React state. Pool everything, allocate nothing in the hot path, use InstancedMesh for repeated objects, cap devicePixelRatio at 2. Player stays near origin; the world scrolls."
+    },
+    "reviewer": {
+      "description": "Read-only reviewer. Use a different model family from the author of the code under review.",
+      "mode": "subagent",
+      "model": "REPLACE_WITH_PROVIDER/MODEL_FOR_REVIEW",
+      "tools": { "write": false, "edit": false, "bash": false },
+      "prompt": "Review the change against AGENTS.md. Check: finance numbers against the section 4 fixtures, learning-goal coverage, no arithmetic in UI components, no allocations in the game loop, accessibility, and that every money screen carries the fictional-scenario disclaimer. Report problems; do not fix them."
+    }
+  },
+  "command": {
+    "milestone": {
+      "description": "Implement one milestone from AGENTS.md section 8",
+      "template": "Read AGENTS.md fully. Implement milestone $ARGUMENTS only; do not start later milestones. Use the matching subagent for each package. Run typecheck, lint and tests until green. Append any architectural decision to docs/decisions.md. Then invoke the reviewer subagent on the diff and address its findings. Finish with a short summary and the exact commands to run it."
+    },
+    "check-fixtures": {
+      "description": "Verify the finance engine against the mockup numbers",
+      "template": "Run the finance-engine tests and confirm each fixture in AGENTS.md section 4 is covered by a named test and passes. List any fixture without a test and add it."
+    }
+  }
+}

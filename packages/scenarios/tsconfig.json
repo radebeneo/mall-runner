@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Types for import.meta.glob, used by the scenario registry.
+    "types": ["vite/client"]
+  },
+  "include": ["src", "test"]
+}

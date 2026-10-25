@@ -1,0 +1,7 @@
+packages:
+  - packages/*
+  - apps/*
+
+# Single source of truth for versions shared across workspace packages.
+catalog:
+  typescript: 6.0.3

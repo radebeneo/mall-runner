@@ -1,0 +1,20 @@
+{
+  "name": "@credit-runner/scenarios",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@credit-runner/finance-engine": "workspace:*",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "typescript": "catalog:",
+    "vite": "^8.3.5"
+  }
+}

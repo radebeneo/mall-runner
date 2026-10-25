@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "title": "Your first three months",
+  "summary": "A new credit card, a steady income and a small emergency fund. A fictional learning scenario.",
+  "config": {
+    "id": "starter-3-month",
+    "months": 3,
+    "startMonth": { "year": 2026, "month": 9 },
+    "creditLimit": 500000,
+    "monthlyAfterEssentials": 190000,
+    "existingCommitments": 57900,
+    "emergencySavings": 50000,
+    "minimumPaymentRate": 0.05,
+    "monthlyInterestRate": 0.02,
+    "latePaymentFee": 15000,
+    "statementCloseDay": 25,
+    "paymentDueDay": 5,
+    "purchases": [
+      {
+        "id": "mall-shopping-1",
+        "monthIndex": 0,
+        "label": "Mall shopping",
+        "amount": 76000
+      },
+      {
+        "id": "mall-shopping-2",
+        "monthIndex": 1,
+        "label": "Mall shopping",
+        "amount": 54000
+      },
+      {
+        "id": "mall-shopping-3",
+        "monthIndex": 2,
+        "label": "Mall shopping",
+        "amount": 61000
+      }
+    ],
+    "events": [
+      {
+        "id": "pharmacy",
+        "monthIndex": 0,
+        "title": "Pharmacy visit",
+        "cost": 48000
+      },
+      {
+        "id": "laptop-charger",
+        "monthIndex": 1,
+        "title": "Replacement laptop charger",
+        "cost": 39000
+      },
+      {
+        "id": "dentist",
+        "monthIndex": 2,
+        "title": "Dentist check-up",
+        "cost": 35000
+      }
+    ],
+    "offers": [
+      {
+        "id": "headphones",
+        "monthIndex": 0,
+        "title": "Wireless headphones",
+        "cashPrice": 300000,
+        "monthlyInstalment": 25000,
+        "termMonths": 12,
+        "upfrontFee": 0,
+        "monthlyFee": 0
+      },
+      {
+        "id": "smartwatch",
+        "monthIndex": 1,
+        "title": "Fitness smartwatch",
+        "cashPrice": 180000,
+        "monthlyInstalment": 32000,
+        "termMonths": 6,
+        "upfrontFee": 0,
+        "monthlyFee": 0
+      }
+    ]
+  }
+}
