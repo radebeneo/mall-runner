@@ -1,111 +1,175 @@
+// The unexpected expense, following art-direction/unexpected-bill-screen.png: emergency savings
+// against the card (learning goal 5). Every figure comes from the finance engine via the session.
+// Neither option is marked as the better one; the result appears only once the player chooses.
 import { formatRand } from '@credit-runner/finance-engine';
-import type { EventFunding, FundingSource } from '@credit-runner/finance-engine';
-import {
-  Button,
-  Callout,
-  ChoiceGroup,
-  Disclaimer,
-  InfoCard,
-  ScreenPanel,
-  ValueList,
-  ValueRow,
-} from '@credit-runner/ui';
-import type { Tone } from '@credit-runner/ui';
+import type {
+  Cents,
+  EventFunding,
+  FundingSource,
+  ScenarioEvent,
+} from '@credit-runner/finance-engine';
+import { Button, Callout, Disclaimer, Icon, OptionCard, ScreenPanel } from '@credit-runner/ui';
+import type { IconName, OptionActionTone, OptionFact, TileTone } from '@credit-runner/ui';
 import { useState } from 'react';
-import { eventOptions, pendingEvent } from '../session/session';
+import { eventOptions, hudCardBalance, pendingEvent } from '../session/session';
 import type { EventOption, Session } from '../session/session';
 import { useGameStore } from '../store/game-store';
+import { eventArt } from './art';
 import { FUNDING_TITLES } from './labels';
 
-function optionDetails(option: EventOption): string[] {
-  const { funding, after } = option;
-  const details: string[] = [];
-  if (funding.source === 'EMERGENCY_SAVINGS') {
-    details.push(`Emergency savings left: ${formatRand(after.emergencySavings)}`);
-  }
-  if (funding.source === 'SPENDING_ACCOUNT') {
-    details.push(`Spending account left: ${formatRand(after.spendingAccount)}`);
-  }
-  if (funding.toCard > 0) details.push(`Goes on the card: ${formatRand(funding.toCard)}`);
-  details.push(`Card balance: ${formatRand(option.cardBalanceAfter)}`);
-  return details;
+/** The two ways to pay shown in the mockup. */
+type ShownSource = Extract<FundingSource, 'EMERGENCY_SAVINGS' | 'CARD'>;
+
+const SHOWN_SOURCES: readonly ShownSource[] = ['EMERGENCY_SAVINGS', 'CARD'];
+
+const CARD_STYLES: Record<
+  ShownSource,
+  { icon: { name: IconName; tone: TileTone }; action: string; actionTone: OptionActionTone }
+> = {
+  EMERGENCY_SAVINGS: {
+    icon: { name: 'piggy', tone: 'green' },
+    action: 'Use savings',
+    actionTone: 'green',
+  },
+  CARD: { icon: { name: 'card', tone: 'amber' }, action: 'Use card', actionTone: 'amber' },
+};
+
+/** "An unexpected R480\npharmacy bill." The line break sits after the amount, as in the mockup. */
+function eventHeadline(event: ScenarioEvent): string {
+  return `An unexpected ${formatRand(event.cost)}\n${event.title.toLowerCase()}.`;
 }
 
-function fundingResult(funding: EventFunding): { tone: Tone; title: string; body: string } {
+/** "Savings: R500 → R20" when the amount changes, "Savings stays R500" when it does not. */
+function moneyFact(label: string, before: Cents, after: Cents): string {
+  return before === after
+    ? `${label} stays ${formatRand(before)}`
+    : `${label}: ${formatRand(before)} → ${formatRand(after)}`;
+}
+
+function tradeOff(funding: EventFunding): string {
   if (funding.fellBackToCard) {
-    const covered =
-      funding.source === 'EMERGENCY_SAVINGS'
-        ? `Your emergency savings covered ${formatRand(funding.fromSavings)}`
-        : `Your spending account covered ${formatRand(funding.fromSpending)}`;
+    return `Savings cover ${formatRand(funding.fromSavings)}. The other ${formatRand(funding.toCard)} goes on the card.`;
+  }
+  return funding.source === 'CARD'
+    ? 'A larger repayment to plan for.'
+    : 'Less savings available for another surprise.';
+}
+
+function optionFacts(option: EventOption, savingsBefore: Cents, cardBefore: Cents): OptionFact[] {
+  const savingsAfter = option.after.emergencySavings;
+  return [
+    {
+      icon: savingsAfter === savingsBefore ? 'shield' : 'wallet',
+      tone: 'green',
+      text: moneyFact('Savings', savingsBefore, savingsAfter),
+    },
+    {
+      icon: 'card',
+      tone: 'purple',
+      text: moneyFact('Card balance', cardBefore, option.cardBalanceAfter),
+    },
+    { icon: 'info', tone: 'purple', text: tradeOff(option.funding) },
+  ];
+}
+
+function fundingResult(option: EventOption): { title: string; body: string } {
+  const { funding } = option;
+  if (funding.source === 'CARD') {
     return {
-      tone: 'warning',
-      title: 'Part of it went on the card.',
-      body: `${covered}. The other ${formatRand(funding.toCard)} went on your card.`,
+      title: `${formatRand(funding.toCard)} added to your card.`,
+      body: 'Review your repayment plan on statement day.',
     };
   }
-  switch (funding.source) {
-    case 'CARD':
-      return {
-        tone: 'info',
-        title: 'It is on your card.',
-        body: `${formatRand(funding.toCard)} joins this month's statement. If you don't pay the full statement balance by the due date, it can attract interest.`,
-      };
-    case 'EMERGENCY_SAVINGS':
-      return {
-        tone: 'success',
-        title: 'Paid from your emergency savings.',
-        body: 'No new debt. This is what an emergency fund is for.',
-      };
-    case 'SPENDING_ACCOUNT':
-      return {
-        tone: 'success',
-        title: 'Paid from your spending account.',
-        body: 'No new debt, but there is less money left for your card repayment.',
-      };
+  if (funding.fellBackToCard) {
+    return {
+      title: `${formatRand(funding.fromSavings)} from savings and ${formatRand(funding.toCard)} added to your card.`,
+      body: 'Review your repayment plan on statement day.',
+    };
   }
+  return {
+    title: `${formatRand(funding.fromSavings)} paid from your emergency savings.`,
+    body: `${formatRand(option.after.emergencySavings)} is left for another surprise.`,
+  };
+}
+
+function EssentialsNote() {
+  return (
+    <p className="flex items-center gap-3 rounded-xl border border-mint-line bg-mint px-3 py-2 text-sm leading-snug text-ink">
+      <Icon name="shield" strokeWidth={2.5} className="size-7 shrink-0 text-primary" />
+      <span>Your essentials are already covered this month.</span>
+    </p>
+  );
 }
 
 export function EventScreen({ session }: { session: Session }) {
   const fundEvent = useGameStore((store) => store.fundEvent);
-  const [source, setSource] = useState<FundingSource | null>(null);
-  const [confirmed, setConfirmed] = useState(false);
+  const [source, setSource] = useState<ShownSource | null>(null);
 
   const event = pendingEvent(session);
   if (event === undefined) throw new Error('The event screen needs an unexpected expense.');
   const options = eventOptions(session, event);
+  const savingsBefore = session.state.emergencySavings;
+  const cardBefore = hudCardBalance(session);
+  const art = eventArt(event.id);
   const chosen = options.find((option) => option.source === source);
-  const result = confirmed && chosen !== undefined ? fundingResult(chosen.funding) : null;
+  const result = chosen === undefined ? null : fundingResult(chosen);
 
   return (
     <ScreenPanel
       badge="Unexpected expense"
-      title={event.title}
-      intro="A cost you did not plan for. How will you pay for it?"
+      badgeTone="red"
+      badgeIcon="alert"
+      title={eventHeadline(event)}
+      intro="You need it today. How will you cover it?"
+      media={
+        art === undefined ? undefined : (
+          <img src={art} alt="" className="w-24 object-contain sm:w-52" />
+        )
+      }
     >
-      <InfoCard title="The bill">
-        <ValueList>
-          <ValueRow label="Amount to pay" value={formatRand(event.cost)} emphasis />
-          <ValueRow label="Emergency savings" value={formatRand(session.state.emergencySavings)} />
-          <ValueRow label="Spending account" value={formatRand(session.state.spendingAccount)} />
-        </ValueList>
-      </InfoCard>
-      <ChoiceGroup<FundingSource>
-        legend="Choose how to pay"
-        selected={source}
-        onChange={setSource}
-        disabled={confirmed}
-        options={options.map((option) => ({
-          value: option.source,
-          title: FUNDING_TITLES[option.source],
-          details: optionDetails(option),
-        }))}
-      />
+      <div className="grid gap-3 sm:grid-cols-2">
+        {SHOWN_SOURCES.map((shown) => {
+          const option = options.find((candidate) => candidate.source === shown);
+          if (option === undefined) return null;
+          const style = CARD_STYLES[shown];
+          return (
+            <OptionCard
+              key={shown}
+              title={FUNDING_TITLES[shown]}
+              icon={style.icon}
+              facts={optionFacts(option, savingsBefore, cardBefore)}
+              note={shown === 'EMERGENCY_SAVINGS' ? <EssentialsNote /> : undefined}
+              actionLabel={style.action}
+              actionTone={style.actionTone}
+              selected={source === shown}
+              locked={source !== null}
+              onSelect={() => {
+                setSource(shown);
+              }}
+            />
+          );
+        })}
+      </div>
+
       {result !== null && (
-        <Callout tone={result.tone} title={result.title} live>
+        <Callout
+          tone="card"
+          title={result.title}
+          media={
+            <span
+              aria-hidden="true"
+              className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-white"
+            >
+              <Icon name="check" strokeWidth={3} className="size-6" />
+            </span>
+          }
+          live
+        >
           {result.body}
         </Callout>
       )}
-      {confirmed && source !== null ? (
+
+      {source !== null && (
         <Button
           onClick={() => {
             fundEvent(source);
@@ -113,17 +177,11 @@ export function EventScreen({ session }: { session: Session }) {
         >
           Continue
         </Button>
-      ) : (
-        <Button
-          disabled={source === null}
-          onClick={() => {
-            setConfirmed(true);
-          }}
-        >
-          Confirm
-        </Button>
       )}
-      <Disclaimer />
+
+      <Disclaimer variant="mint">
+        This is a learning example. Amounts and dates are fictional and for practice only.
+      </Disclaimer>
     </ScreenPanel>
   );
 }

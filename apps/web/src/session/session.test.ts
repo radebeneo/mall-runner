@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { QUIZ_QUESTIONS } from '../content/quiz';
+import { QUIZ_QUESTIONS, fillQuizText } from '../content/quiz';
 import {
   answerQuiz,
   completeQuiz,
@@ -12,6 +12,7 @@ import {
   fundEvent,
   hudCardBalance,
   isFinalMonth,
+  isRunFinished,
   loadStarterScenario,
   monthLabel,
   nextQuizQuestion,
@@ -19,6 +20,7 @@ import {
   openOffer,
   pendingEvent,
   pendingOffer,
+  quizDates,
   repaymentOptions,
   requireRepayment,
   requireStatement,
@@ -50,7 +52,7 @@ describe('decisions-only session', () => {
     // After essentials 1,900 - commitments 579 = available 1,321.
     expect(session.state.spendingAccount).toBe(132100);
     expect(hudCardBalance(session)).toBe(76000);
-    expect(pendingOffer(session)?.id).toBe('headphones');
+    expect(pendingOffer(session)?.id).toBe('sofa');
   });
 
   it('shows the offer impact from the mockups', () => {
@@ -156,8 +158,13 @@ describe('decisions-only session', () => {
     expect(nextQuizQuestion(session)).toBeUndefined();
     expect(() => answerQuiz(session, QUIZ_QUESTIONS[0]!.id, 'a')).toThrow();
 
+    const quizKey = screenKey(session);
+    expect(isRunFinished(session)).toBe(false);
     session = completeQuiz(session);
     expect(session.cycle.phase).toBe('RUN_SUMMARY');
+    expect(isRunFinished(session)).toBe(true);
+    // The quiz and the summary share one screen, so finishing does not remount it.
+    expect(screenKey(session)).toBe(quizKey);
     const summary = runSummary(session);
     expect(summary.statements).toBe(3);
     expect(summary.statementsPaidInFull).toBe(3);
@@ -167,5 +174,19 @@ describe('decisions-only session', () => {
 
   it('refuses quiz answers before the quiz opens', () => {
     expect(() => answerQuiz(newSession(), QUIZ_QUESTIONS[0]!.id, 'a')).toThrow();
+  });
+
+  it('fills the quiz dates from the first statement', () => {
+    const dates = quizDates(newSession());
+    expect(dates).toEqual({ statementCloses: '30 September', paymentDue: '25 October' });
+    expect(fillQuizText('Pay by {paymentDue}, not {statementCloses}.', dates)).toBe(
+      'Pay by 25 October, not 30 September.',
+    );
+  });
+
+  it('covers every learning goal once in the quiz', () => {
+    const goals = QUIZ_QUESTIONS.map((question) => question.goal);
+    expect(new Set(goals).size).toBe(6);
+    expect(goals).toHaveLength(6);
   });
 });

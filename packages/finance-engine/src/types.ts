@@ -25,6 +25,8 @@ export interface ScenarioEvent {
   /** Zero-based month in which the event occurs. */
   monthIndex: number;
   title: string;
+  /** How the charge reads on a statement when it goes on the card, e.g. "Pharmacy purchase". */
+  statementLabel?: string | undefined;
   cost: Cents;
 }
 
@@ -142,6 +144,23 @@ export interface Statement {
   closeDate: CalendarDate;
   dueDate: CalendarDate;
   terms: StatementTerms;
+}
+
+/** A charge put on the card that is not a purchase, e.g. an unexpected expense or an offer fee. */
+export interface CardCharge {
+  id: string;
+  label: string;
+  amount: Cents;
+}
+
+export type StatementLineKind = 'BROUGHT_FORWARD' | 'PURCHASE' | 'CHARGE' | 'OTHER';
+
+/** One labelled line of a statement. A statement's lines always add up to its balance. */
+export interface StatementLine {
+  id: string;
+  kind: StatementLineKind;
+  label: string;
+  amount: Cents;
 }
 
 export type RepaymentChoice = 'FULL' | 'HALF' | 'MINIMUM' | 'NONE';

@@ -5,6 +5,7 @@ export { formatPercent, formatPoints, formatRand, formatWholePercent, sumCents }
 export { assertCalendarMonth, formatDate, formatShortDate, statementDates } from './calendar';
 export { interestOn } from './interest';
 export { assertStatementTerms, buildStatement, minimumDue, statementTerms } from './statement';
+export { BROUGHT_FORWARD_LABEL, OTHER_CHARGES_LABEL, itemiseStatement } from './statement-lines';
 export { assertScenarioPurchase, pendingCardBalance, purchasesForMonth } from './purchases';
 export {
   REPAYMENT_CHOICES,

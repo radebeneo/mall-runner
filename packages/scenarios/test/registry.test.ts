@@ -59,9 +59,9 @@ describe('starter-3-month scenario', () => {
     const full = applyRepayment(charged, statement, 'FULL');
     expect(full.next.spendingAccount).toBe(8100);
 
-    const headphones = config.offers.find((offer) => offer.id === 'headphones');
-    if (headphones === undefined) throw new Error('The headphones offer is missing.');
-    const impact = evaluateOffer(headphones, state);
+    const sofa = config.offers.find((offer) => offer.id === 'sofa');
+    if (sofa === undefined) throw new Error('The sofa offer is missing.');
+    const impact = evaluateOffer(sofa, state);
     expect(impact.totalPayable).toBe(300000);
     expect(impact.commitmentsAfter).toBe(82900);
     expect(impact.budgetRemaining).toBe(107100);

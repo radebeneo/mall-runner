@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "title": "Your first three months",
   "summary": "A new credit card, a steady income and a small emergency fund. A fictional learning scenario.",
+  "commitmentsNote": "clothing + phone",
   "config": {
     "id": "starter-3-month",
     "months": 3,
@@ -13,25 +14,25 @@
     "minimumPaymentRate": 0.05,
     "monthlyInterestRate": 0.02,
     "latePaymentFee": 15000,
-    "statementCloseDay": 25,
-    "paymentDueDay": 5,
+    "statementCloseDay": 30,
+    "paymentDueDay": 25,
     "purchases": [
       {
         "id": "mall-shopping-1",
         "monthIndex": 0,
-        "label": "Mall shopping",
+        "label": "Earlier card purchases",
         "amount": 76000
       },
       {
         "id": "mall-shopping-2",
         "monthIndex": 1,
-        "label": "Mall shopping",
+        "label": "Earlier card purchases",
         "amount": 54000
       },
       {
         "id": "mall-shopping-3",
         "monthIndex": 2,
-        "label": "Mall shopping",
+        "label": "Earlier card purchases",
         "amount": 61000
       }
     ],
@@ -39,7 +40,8 @@
       {
         "id": "pharmacy",
         "monthIndex": 0,
-        "title": "Pharmacy visit",
+        "title": "Pharmacy bill",
+        "statementLabel": "Pharmacy purchase",
         "cost": 48000
       },
       {
@@ -57,9 +59,9 @@
     ],
     "offers": [
       {
-        "id": "headphones",
+        "id": "sofa",
         "monthIndex": 0,
-        "title": "Wireless headphones",
+        "title": "Modern 2-seater sofa",
         "cashPrice": 300000,
         "monthlyInstalment": 25000,
         "termMonths": 12,

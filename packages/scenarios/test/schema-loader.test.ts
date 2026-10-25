@@ -84,6 +84,21 @@ describe('parseScenario', () => {
     expect(issues.some((issue) => issue.startsWith('title:'))).toBe(true);
   });
 
+  it('reads the display-only commitments note', () => {
+    expect(parseScenario(validFile()).commitmentsNote).toBe('clothing + phone');
+  });
+
+  it('allows the commitments note to be left out', () => {
+    const file = validFile();
+    delete file.commitmentsNote;
+    expect(parseScenario(file).commitmentsNote).toBeUndefined();
+  });
+
+  it('rejects an empty commitments note', () => {
+    const issues = issuesFor({ ...validFile(), commitmentsNote: '  ' });
+    expect(issues.some((issue) => issue.startsWith('commitmentsNote:'))).toBe(true);
+  });
+
   it('rejects data that is not an object', () => {
     expect(issuesFor(null)).toEqual([expect.stringMatching(/^\(file\):/)]);
     expect(issuesFor('starter')).toHaveLength(1);
@@ -116,7 +131,7 @@ describe('parseScenario', () => {
     expect(scenario.config.purchases[0]).toEqual({
       id: 'mall-shopping-1',
       monthIndex: 0,
-      label: 'Mall shopping',
+      label: 'Earlier card purchases',
       amount: 76000,
     });
   });

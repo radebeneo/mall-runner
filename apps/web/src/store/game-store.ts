@@ -58,7 +58,11 @@ export const useGameStore = create<GameStore>()((set, get) => {
       update(run.finishMonth);
     },
     answerQuiz: (questionId, optionId) => {
-      update((session) => run.answerQuiz(session, questionId, optionId));
+      // The last answer ends the quiz, so the finish screen shows the run summary in place.
+      update((session) => {
+        const answered = run.answerQuiz(session, questionId, optionId);
+        return run.nextQuizQuestion(answered) === undefined ? run.completeQuiz(answered) : answered;
+      });
     },
     completeQuiz: () => {
       update(run.completeQuiz);

@@ -227,3 +227,52 @@ other scenario variants from AGENTS.md section 5 come later.
   disclaimer, the absence of "Recommended", and that comparisons appear only after confirming.
 - Vitest occasionally times out starting a jsdom worker on Windows on a cold start; a rerun
   passes. If this becomes frequent, raise the pool start-up timeout rather than skipping tests.
+
+## 2026-10-25 — Decision screens restyled to the `art-direction/` mockups
+
+### Mockups vs brief
+
+- Layout, colours, icons and spacing follow the mockups one-to-one. Where a mockup conflicts with
+  the brief, the brief wins: no "Recommended" badge, no "before applicable interest or fees"
+  wording (we say "is charged interest"), no product-quotation copy and no real brands.
+- Comparisons and interest figures stay hidden until the player confirms. On the offer and event
+  screens this adds a Confirm step that the mockups do not show; it is the only deliberate
+  difference from `check-offer-screen.png`.
+- The pay plan follows `choose-your-repayment-screen.png`; `repayment-screen.png` is not used.
+- The title and month screens have no mockup, so they reuse the shared visual language.
+
+### Screens
+
+- **Offer:** `tag` badge, sofa card plus "Your budget impact" card, `tiles` radios ("Take the
+  offer" / "Not this month"). "Compare the commitment" is a `ToggleTile` that reveals an
+  `InfoCard`. The result `Callout` tone depends on the outcome (solid when declined; danger on a
+  shortfall, warning when dearer than cash, otherwise card).
+- **Event:** red alert badge, `OptionCard`s for savings (green) and card (amber). Choosing locks
+  the option, then shows the result and Continue.
+- **Month summary** (`see-the-consequence-screen.png`): character art, headline panel, value list
+  beside an "essentials covered" card, and the "What if I paid only the minimum?" `Switch`. "Review
+  your plan" toggles the comparison (`aria-expanded`).
+- **Finish** (`finish-with-understanding-screen.png`): one `FinishScreen` covers FINAL_QUIZ and
+  RUN_SUMMARY. `screenKey` maps both to the same key so it does not remount between them. Quiz
+  options use `aria-pressed`, lock once answered and reveal an explanation in a `status` region.
+  Quiz text uses `{statementCloses}`/`{paymentDue}` placeholders filled from the engine's dates.
+  The store auto-completes the quiz after the last answer. `QuizScreen` and `RunSummaryScreen`
+  were removed.
+- Points display as "1240 pts" with a coin icon: no separator, so they never resemble rand.
+
+### UI primitives
+
+- Icons are inline SVGs in `packages/ui/src/Icon.tsx`. `IconTile` has five tones and a
+  `shape` of `square` or `round`.
+- New `Switch` (`role="switch"`, `aria-checked`, `aria-controls`); `ValueRow` gained `hint` and
+  `unit`; `Hud` gained `monthNote` and `complete` (the bar fills and shows "Simulation complete").
+- Scenario art is mapped by scenario ID in `apps/web/src/screens/art.ts`, with an icon-tile
+  fallback, so new scenarios work without art.
+- Tailwind 4 uses the suffix important syntax (`px-4!`).
+
+### Verification
+
+- CM Browser driving became unreliable (stale refs on every click, empty screenshots), so the
+  flow was verified through `App.test.tsx` and by comparing each screen's code with its mockup.
+- The Vitest forks pool times out starting workers on this Windows machine; `--pool=threads`
+  runs reliably and is used for local runs.

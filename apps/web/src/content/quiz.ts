@@ -1,5 +1,6 @@
 // The final quiz. Each question checks one learning goal from AGENTS.md section 3. The text
-// contains no amounts, so no number in the quiz bypasses the finance engine.
+// contains no amounts. Dates are placeholders ({statementCloses}, {paymentDue}) filled from the
+// finance engine, so no number in the quiz bypasses it.
 
 export type LearningGoal =
   | 'CLOSING_VS_DUE'
@@ -21,7 +22,12 @@ export const LEARNING_GOALS: readonly LearningGoal[] = [
 export interface QuizOption {
   id: string;
   text: string;
+  /** A second line under the text, e.g. "(Payment due)". */
+  detail?: string;
 }
+
+/** `stack`: one option per row. `pair`: two options side by side, as for the two dates. */
+export type QuizLayout = 'stack' | 'pair';
 
 export interface QuizQuestion {
   id: string;
@@ -31,40 +37,55 @@ export interface QuizQuestion {
   correctOptionId: string;
   /** Shown after the player answers, whether they were right or not. */
   explanation: string;
+  layout?: QuizLayout;
 }
 
+/** Formatted dates the quiz text can refer to, e.g. "30 September". */
+export interface QuizDates {
+  statementCloses: string;
+  paymentDue: string;
+}
+
+/** Replaces the date placeholders in quiz text with the engine's dates. */
+export function fillQuizText(text: string, dates: QuizDates): string {
+  return text
+    .split('{statementCloses}')
+    .join(dates.statementCloses)
+    .split('{paymentDue}')
+    .join(dates.paymentDue);
+}
+
+// The first two questions follow finish-with-understanding-screen.png word for word.
 export const QUIZ_QUESTIONS: readonly QuizQuestion[] = [
-  {
-    id: 'closing-vs-due',
-    goal: 'CLOSING_VS_DUE',
-    prompt: 'What is the difference between the statement closing date and the payment due date?',
-    options: [
-      { id: 'a', text: 'They are two names for the same day.' },
-      {
-        id: 'b',
-        text: 'The closing date ends the statement period. The due date is the deadline to pay it.',
-      },
-      { id: 'c', text: 'The due date is when new purchases stop counting.' },
-    ],
-    correctOptionId: 'b',
-    explanation:
-      'Purchases up to the closing date appear on the statement. You then have until the due date to pay it.',
-  },
   {
     id: 'minimum-payment',
     goal: 'MINIMUM_PAYMENT',
-    prompt: 'What happens if you pay only the minimum?',
+    prompt:
+      'You can afford the minimum payment, but not the full statement balance. What should you understand?',
     options: [
-      { id: 'a', text: 'The whole balance is cleared.' },
-      { id: 'b', text: 'Nothing else is owed until next year.' },
       {
-        id: 'c',
-        text: 'You avoid a missed payment, but the rest of the balance can attract interest.',
+        id: 'a',
+        text: 'Paying the minimum by the due date avoids missing the required payment, but the remaining debt can attract interest.',
       },
+      { id: 'b', text: 'If you pay the minimum, you won’t pay any interest.' },
+      { id: 'c', text: 'You must pay in full every month or your card will be cancelled.' },
     ],
-    correctOptionId: 'c',
+    correctOptionId: 'a',
     explanation:
       'The minimum keeps your account in good standing, but whatever you leave unpaid carries over and can grow with interest.',
+  },
+  {
+    id: 'closing-vs-due',
+    goal: 'CLOSING_VS_DUE',
+    prompt: 'Which date is the deadline for payment?',
+    layout: 'pair',
+    options: [
+      { id: 'a', text: '{statementCloses}', detail: '(Statement closes)' },
+      { id: 'b', text: '{paymentDue}', detail: '(Payment due)' },
+    ],
+    correctOptionId: 'b',
+    explanation:
+      'Purchases up to {statementCloses} appear on the statement. You then have until {paymentDue} to pay it.',
   },
   {
     id: 'interest-free',
@@ -137,9 +158,4 @@ export function isCorrectAnswer(question: QuizQuestion, optionId: string): boole
     throw new RangeError(`Question "${question.id}" has no option "${optionId}".`);
   }
   return optionId === question.correctOptionId;
-}
-
-/** The question's position in the quiz, starting at 1. */
-export function questionNumber(questionId: string): number {
-  return QUIZ_QUESTIONS.indexOf(findQuestion(questionId)) + 1;
 }

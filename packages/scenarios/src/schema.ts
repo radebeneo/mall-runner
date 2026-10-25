@@ -48,6 +48,8 @@ export const scenarioEventSchema = z.strictObject({
   id: slug(),
   monthIndex: monthIndex(),
   title: text(),
+  /** How the charge reads on the statement if it goes on the card. Defaults to the title. */
+  statementLabel: text().optional(),
   cost: cents(),
 });
 
@@ -137,5 +139,10 @@ export const scenarioFileSchema = z.strictObject({
   title: text(),
   /** One or two sentences describing the situation, shown under the title. */
   summary: text(),
+  /**
+   * Display-only description of the existing commitments, e.g. "clothing + phone". The engine
+   * never reads it; the amount always comes from config.existingCommitments.
+   */
+  commitmentsNote: text().optional(),
   config: scenarioConfigSchema,
 });

@@ -14,6 +14,8 @@ import {
   createInitialState,
   createRunRecord,
   evaluateOffer,
+  formatDate,
+  itemiseStatement,
   pendingCardBalance,
   planEventFunding,
   projectAlternate,
@@ -27,6 +29,7 @@ import {
   transition,
 } from '@credit-runner/finance-engine';
 import type {
+  CardCharge,
   Cents,
   CycleState,
   Decision,
@@ -44,12 +47,13 @@ import type {
   ScenarioOffer,
   Statement,
   StatementDates,
+  StatementLine,
   StatementTerms,
 } from '@credit-runner/finance-engine';
 import { STARTER_SCENARIO_ID, getScenario } from '@credit-runner/scenarios';
 import type { Scenario } from '@credit-runner/scenarios';
 import { QUIZ_QUESTIONS, findQuestion, isCorrectAnswer } from '../content/quiz';
-import type { QuizQuestion } from '../content/quiz';
+import type { QuizDates, QuizQuestion } from '../content/quiz';
 
 export interface RepaymentResult {
   outcome: RepaymentOutcome;
@@ -156,6 +160,11 @@ export function offerImpact(session: Session, offer: ScenarioOffer): OfferImpact
   return evaluateOffer(offer, session.state);
 }
 
+/** How far an offer would push commitments past the money after essentials. 0 when it fits. */
+export function offerShortfall(impact: OfferImpact): Cents {
+  return impact.budgetRemaining < 0 ? -impact.budgetRemaining : 0;
+}
+
 export function decideOffer(session: Session, accepted: boolean): Session {
   const offer = pendingOffer(session);
   if (offer === undefined) throw new Error('There is no offer to decide on.');
@@ -251,6 +260,15 @@ export function repaymentOptions(session: Session): RepaymentOption[] {
   }));
 }
 
+/**
+ * What each repayment choice would do right now, in REPAYMENT_CHOICES order. The pay-plan cards
+ * show only the immediate facts from these (money left, amount still owed); interest and the
+ * side-by-side comparison are revealed after the player confirms.
+ */
+export function repaymentPreviews(session: Session): readonly RepaymentOutcome[] {
+  return compareRepaymentChoices(session.state, requireStatement(session));
+}
+
 export function confirmRepayment(session: Session, choice: RepaymentChoice): Session {
   const statement = requireStatement(session);
   const cycle = transition(session.cycle, { type: 'PAYMENT_CONFIRMED' });
@@ -309,6 +327,54 @@ export function monthLabel(session: Session): string {
   return `${String(session.cycle.monthIndex + 1)} of ${String(session.cycle.months)}`;
 }
 
+/** "1/3", as on the HUD month pill. */
+export function monthShortLabel(session: Session): string {
+  return `${String(session.cycle.monthIndex + 1)}/${String(session.cycle.months)}`;
+}
+
+/**
+ * Where the player sits on the HUD timeline, from statement close (0) to payment due (1).
+ * Until the statement is out the marker waits at the start, planning the payment is midway and a
+ * settled month reaches the due date. The runner will drive this live in milestone 6.
+ */
+export function hudTimelineProgress(session: Session): number {
+  switch (session.cycle.phase) {
+    case 'RUNNING':
+    case 'OFFER_CHECK':
+    case 'EVENT':
+    case 'STATEMENT_READY':
+      return 0;
+    case 'PLAN_PAYMENT':
+      return 0.5;
+    case 'MONTH_SUMMARY':
+    case 'FINAL_QUIZ':
+    case 'RUN_SUMMARY':
+      return 1;
+  }
+}
+
+/**
+ * The scenario's note on what the existing commitments are, e.g. "clothing + phone". Hidden once
+ * an instalment has been added, because the commitments then include more than the note says.
+ */
+export function commitmentsNote(session: Session): string | undefined {
+  return session.state.instalments.length === 0 ? session.scenario.commitmentsNote : undefined;
+}
+
+/**
+ * Emergency savings spent on this month's unexpected expenses, from the recorded engine results.
+ * 0 means the savings stayed intact this month.
+ */
+export function monthSavingsUsed(session: Session): Cents {
+  const { events } = session.scenario.config;
+  const { monthIndex } = session.cycle;
+  return session.record.eventFundings
+    .filter((funding) =>
+      events.some((event) => event.id === funding.eventId && event.monthIndex === monthIndex),
+    )
+    .reduce((total, funding) => total + funding.fromSavings, 0);
+}
+
 export function isFinalMonth(session: Session): boolean {
   return session.cycle.monthIndex + 1 >= session.cycle.months;
 }
@@ -334,6 +400,47 @@ export function hudCardBalance(session: Session): Cents {
   }
 }
 
+/**
+ * This month's card charges that are not purchases: unexpected expenses put on the card and any
+ * upfront offer fees. Amounts come straight from the recorded engine results.
+ */
+export function monthCardCharges(session: Session): CardCharge[] {
+  const { events, offers } = session.scenario.config;
+  const { monthIndex } = session.cycle;
+  const charges: CardCharge[] = [];
+  for (const funding of session.record.eventFundings) {
+    const event = events.find(
+      (candidate) => candidate.id === funding.eventId && candidate.monthIndex === monthIndex,
+    );
+    if (event !== undefined && funding.toCard > 0) {
+      charges.push({
+        id: `event-${event.id}`,
+        label: event.statementLabel ?? event.title,
+        amount: funding.toCard,
+      });
+    }
+  }
+  for (const decision of session.record.offerDecisions) {
+    const offer = offers.find(
+      (candidate) =>
+        candidate.id === decision.impact.offerId && candidate.monthIndex === monthIndex,
+    );
+    if (offer !== undefined && decision.accepted && decision.impact.upfrontFee > 0) {
+      charges.push({
+        id: `offer-fee-${offer.id}`,
+        label: `${offer.title} fee`,
+        amount: decision.impact.upfrontFee,
+      });
+    }
+  }
+  return charges;
+}
+
+/** The lines of this month's statement. They always add up to the statement balance. */
+export function statementLines(session: Session): StatementLine[] {
+  return itemiseStatement(requireStatement(session), monthCardCharges(session));
+}
+
 export function quizAnswerFor(session: Session, questionId: string): QuizAnswer | undefined {
   return session.record.quizAnswers.find((answer) => answer.questionId === questionId);
 }
@@ -346,8 +453,24 @@ export function runSummary(session: Session): RunSummary {
   return summarizeRun(session.record);
 }
 
+/** True once every quiz question is answered and the run summary is showing. */
+export function isRunFinished(session: Session): boolean {
+  return session.cycle.phase === 'RUN_SUMMARY';
+}
+
+/**
+ * The first statement's dates, e.g. "30 September" and "25 October". The finish screen uses them
+ * as its worked example, as in the mockup.
+ */
+export function quizDates(session: Session): QuizDates {
+  const { closes, due } = statementDates(session.terms, 0);
+  return { statementCloses: formatDate(closes), paymentDue: formatDate(due) };
+}
+
 /** Changes whenever a new screen should appear, so React remounts it and focus moves to it. */
 export function screenKey(session: Session): string {
   const { phase, monthIndex, pendingEvents } = session.cycle;
-  return `${phase}-${String(monthIndex)}-${String(pendingEvents)}-${String(session.decidedOffers.length)}`;
+  // The quiz and the run summary share one screen, so finishing the quiz does not remount it.
+  const view = phase === 'RUN_SUMMARY' ? 'FINAL_QUIZ' : phase;
+  return `${view}-${String(monthIndex)}-${String(pendingEvents)}-${String(session.decidedOffers.length)}`;
 }

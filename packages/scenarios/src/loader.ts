@@ -7,6 +7,8 @@ export interface Scenario {
   schemaVersion: 1;
   title: string;
   summary: string;
+  /** Display-only label for the existing commitments, e.g. "clothing + phone". */
+  commitmentsNote?: string | undefined;
   config: ScenarioConfig;
 }
 
