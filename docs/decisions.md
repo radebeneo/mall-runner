@@ -354,3 +354,7 @@ other scenario variants from AGENTS.md section 5 come later.
   added later (for example leaderboards or organisation reporting, both open questions), add it
   as an internal service and give `web`'s server-side functions a binding to it. Bindings are not
   available in the browser bundle or at build time.
+- `engines.node` is `>=24.15.0`, not `>=26`. Vercel does not offer Node 26 yet and rejected the
+  build. Every dependency supports Node 24; the strictest is jsdom (`^24.15.0`). We did not use
+  `24.x`, because pnpm refuses to install when the running Node does not match the root
+  `engines`, which would break local Node 26. `.nvmrc` and CI stay on Node 26.
