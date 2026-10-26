@@ -342,3 +342,15 @@ other scenario variants from AGENTS.md section 5 come later.
   device.
 - With Three.js the main chunk is about 887 kB (241 kB gzipped), so Vite warns about chunk size.
   Code-splitting the run screen with `import()` is planned for the PWA milestone.
+
+## 2026-10-26 — Vercel deployment (services mode)
+
+- `vercel.json` at the root defines one service, `web` (`apps/web`, Vite). A catch-all rewrite
+  makes it public at `/`.
+- The auto-detected `scenarios` service was dropped. `packages/scenarios` is a source-first
+  library with no build step; `apps/web` bundles its JSON at build time through
+  `import.meta.glob`. Deploying it separately would build nothing useful.
+- No bindings: v1 has no backend, and no package makes HTTP calls to another. If a backend is
+  added later (for example leaderboards or organisation reporting, both open questions), add it
+  as an internal service and give `web`'s server-side functions a binding to it. Bindings are not
+  available in the browser bundle or at build time.
