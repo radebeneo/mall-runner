@@ -2,6 +2,10 @@
 // screen under the gameplay HUD. The simulation and the Three.js scene live in refs and run on
 // requestAnimationFrame; React holds only discrete UI state (the overlay, the stumble notice and
 // the points from collected coins), never per-frame values (AGENTS.md section 7, rule 1).
+//
+// The runner drives the month (milestone 6): picking up the glowing bag opens the month's offer,
+// and once the month's shopping time is used up the run ends and the cycle moves on to any
+// unexpected expenses and the statement.
 import { formatPoints, formatRand, formatShortDate } from '@credit-runner/finance-engine';
 import {
   DEFAULT_RUNNER_CONFIG,
@@ -25,16 +29,22 @@ import { createMallScene } from '../scenes/mall-scene';
 import type { MallScene } from '../scenes/mall-scene';
 import {
   currentStatementDates,
+  formatRunTimeLeft,
   hudCardBalance,
   hudPointsWithRun,
   hudTimelineProgress,
+  isMonthRunOver,
   monthShortLabel,
   pendingOffer,
+  wholeRunSecondsLeft,
 } from '../session/session';
-import type { Session } from '../session/session';
+import type { RunProgress, Session } from '../session/session';
 import { useGameStore } from '../store/game-store';
 
 type Overlay = 'NONE' | 'PAUSED' | 'CRASHED' | 'UNSUPPORTED';
+
+/** Where the runner hands the month back to the store: nowhere yet, the statement or the offer. */
+type Handoff = 'NONE' | 'FINISH' | 'OFFER';
 
 /** How long the stumble warning stays up, in milliseconds. */
 const STUMBLE_NOTICE_MS = 2500;
@@ -68,8 +78,22 @@ function OverlayCard({ label, children }: { label: string; children: ReactNode }
   );
 }
 
+/** Sends the runner's progress to the store once the simulation step that produced it is over. */
+function handOffMonth(to: Exclude<Handoff, 'NONE'>, progress: RunProgress): void {
+  queueMicrotask(() => {
+    const store = useGameStore.getState();
+    // The player may already have left the run, e.g. through the pause card.
+    if (store.session?.cycle.phase !== 'RUNNING') return;
+    if (to === 'OFFER') {
+      store.openRunOffer(progress);
+    } else {
+      store.finishRun(progress);
+    }
+  });
+}
+
 export function RunScreen({ session }: { session: Session }) {
-  const bankRunPoints = useGameStore((store) => store.bankRunPoints);
+  const bankRun = useGameStore((store) => store.bankRun);
   const finishRun = useGameStore((store) => store.finishRun);
   const openRunOffer = useGameStore((store) => store.openRunOffer);
   const setMode = useGameStore((store) => store.setMode);
@@ -82,6 +106,8 @@ export function RunScreen({ session }: { session: Session }) {
 
   const surfaceRef = useRef<HTMLDivElement>(null);
   const offerLabelRef = useRef<HTMLDivElement>(null);
+  /** The shopping time left. Written by the loop, never rendered by React. */
+  const timeLeftRef = useRef<HTMLSpanElement>(null);
   const perfRef = useRef<HTMLParagraphElement>(null);
   const [showPerf] = useState(perfRequested);
   const runnerRef = useRef<RunnerState | null>(null);
@@ -91,6 +117,8 @@ export function RunScreen({ session }: { session: Session }) {
   const restartPerfRef = useRef<(() => void) | null>(null);
   const overlayRef = useRef<Overlay>('NONE');
   const hasOfferRef = useRef(hasOffer);
+  /** The latest session, so the loop can check the month's banked time without re-mounting. */
+  const sessionRef = useRef(session);
   const seedRef = useRef(session.cycle.monthIndex + 1);
   const attemptRef = useRef(0);
 
@@ -112,6 +140,10 @@ export function RunScreen({ session }: { session: Session }) {
     }
     scene.showOffers = hasOfferRef.current;
 
+    // Set during a step when the month should leave the runner; acted on once, after the step.
+    let handoff: Handoff = 'NONE';
+    let handedOff = false;
+
     let stumbleTimer: number | undefined;
     const runner = createRunner(DEFAULT_RUNNER_CONFIG, seedRef.current, {
       onCoin: (points) => {
@@ -128,6 +160,10 @@ export function RunScreen({ session }: { session: Session }) {
         setStumbled(false);
         setOverlay('CRASHED');
       },
+      onBag: () => {
+        // A bag is only shown while the month still has an offer to decide on.
+        if (hasOfferRef.current && handoff === 'NONE') handoff = 'OFFER';
+      },
     });
 
     // The offer label follows the bag on screen. It is written to the DOM only when it changes.
@@ -135,6 +171,18 @@ export function RunScreen({ session }: { session: Session }) {
     let labelShown = false;
     let labelX = Number.NaN;
     let labelY = Number.NaN;
+
+    // The shopping time left, written to the DOM only when the whole second changes.
+    const timeLeft = timeLeftRef.current;
+    let shownSeconds = wholeRunSecondsLeft(sessionRef.current);
+    if (timeLeft !== null) timeLeft.textContent = formatRunTimeLeft(shownSeconds);
+    const writeTimeLeft = (): void => {
+      if (timeLeft === null) return;
+      const whole = wholeRunSecondsLeft(sessionRef.current, runner.time);
+      if (whole === shownSeconds) return;
+      shownSeconds = whole;
+      timeLeft.textContent = formatRunTimeLeft(whole);
+    };
 
     // The optional perf readout, written to the DOM about once a second.
     const perf = perfRef.current;
@@ -160,11 +208,23 @@ export function RunScreen({ session }: { session: Session }) {
     const loop = createLoop(
       {
         update: (dt) => {
+          if (handoff !== 'NONE') return;
           stepRunner(runner, dt);
+          // The month timer: banked seconds plus this run's simulation seconds. Paused and
+          // crashed time does not count, because the simulation does not advance then.
+          if (handoff === 'NONE' && isMonthRunOver(sessionRef.current, runner.time)) {
+            handoff = 'FINISH';
+          }
         },
         render: (alpha) => {
           scene.render(runner, alpha * clock.step);
           if (timer !== null) writePerf(performance.now());
+          writeTimeLeft();
+          if (handoff !== 'NONE' && !handedOff) {
+            handedOff = true;
+            loopRef.current?.stop();
+            handOffMonth(handoff, { points: runner.points, seconds: runner.time });
+          }
           if (label === null) return;
           const marker = scene.offer;
           if (marker.visible !== labelShown) {
@@ -251,17 +311,25 @@ export function RunScreen({ session }: { session: Session }) {
   }, [overlay]);
 
   useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
+
+  useEffect(() => {
     hasOfferRef.current = hasOffer;
     if (sceneRef.current !== null) sceneRef.current.showOffers = hasOffer;
   }, [hasOffer]);
 
-  const collected = (): number => runnerRef.current?.points ?? 0;
+  /** What this run has collected and not yet banked. */
+  const progress = (): RunProgress => ({
+    points: runnerRef.current?.points ?? 0,
+    seconds: runnerRef.current?.time ?? 0,
+  });
 
   const runAgain = (): void => {
     const runner = runnerRef.current;
     if (runner === null) return;
-    // The coins from the crashed run are kept.
-    bankRunPoints(runner.points);
+    // The coins and the shopping time from the crashed run are kept.
+    bankRun(progress());
     attemptRef.current += 1;
     resetRunner(runner, seedRef.current + attemptRef.current * 101);
     setRunPoints(0);
@@ -350,6 +418,16 @@ export function RunScreen({ session }: { session: Session }) {
       </div>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-col items-center gap-2 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        {/* Shopping happens before the statement closes, so this is not on the date timeline. */}
+        <p className="flex items-center gap-2 rounded-2xl border border-white/15 bg-hud/85 px-4 py-2 text-sm font-semibold text-white shadow-pill backdrop-blur-sm sm:text-base">
+          <span>Shopping time left</span>
+          <span
+            ref={timeLeftRef}
+            role="timer"
+            data-testid="run-time-left"
+            className="font-extrabold tabular-nums"
+          />
+        </p>
         <p className="flex items-center gap-3 rounded-2xl border border-white/15 bg-hud/85 px-4 py-2.5 text-sm font-semibold text-white shadow-pill backdrop-blur-sm sm:gap-4 sm:text-base">
           <span className="font-extrabold">Swipe</span>
           <span className="sr-only">or use the arrow keys:</span>
@@ -389,7 +467,7 @@ export function RunScreen({ session }: { session: Session }) {
               <Button
                 variant="secondary"
                 onClick={() => {
-                  openRunOffer(collected());
+                  openRunOffer(progress());
                 }}
               >
                 See the offer
@@ -398,7 +476,7 @@ export function RunScreen({ session }: { session: Session }) {
             <Button
               variant="secondary"
               onClick={() => {
-                finishRun(collected());
+                finishRun(progress());
               }}
             >
               Finish shopping
@@ -422,7 +500,7 @@ export function RunScreen({ session }: { session: Session }) {
             <Button
               variant="secondary"
               onClick={() => {
-                finishRun(collected());
+                finishRun(progress());
               }}
             >
               Finish shopping

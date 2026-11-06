@@ -80,6 +80,25 @@ export interface Session {
   repayment: RepaymentResult | null;
   /** Commitments the latest month's money could not cover. */
   budgetShortfall: Cents;
+  /**
+   * Seconds of runner shopping banked this month. It survives crashes and the offer screen, and
+   * the month's shopping ends once it reaches MONTH_RUN_SECONDS.
+   */
+  runSeconds: number;
+}
+
+/**
+ * How long each month's shopping runs in runner mode, in seconds. AGENTS.md section 3 asks for
+ * 60 to 90 seconds of running per month.
+ */
+export const MONTH_RUN_SECONDS = 75;
+
+/** What the runner has collected since it was last banked. */
+export interface RunProgress {
+  /** Coin points, a separate scale from money. */
+  points: number;
+  /** Simulation seconds run. Paused and crashed time is not counted. */
+  seconds: number;
 }
 
 export function loadStarterScenario(): Scenario {
@@ -101,6 +120,7 @@ export function createSession(scenario: Scenario): Session {
     statement: null,
     repayment: null,
     budgetShortfall: 0,
+    runSeconds: 0,
   };
 }
 
@@ -162,6 +182,42 @@ export function bankRunPoints(session: Session, points: number): Session {
 /** The HUD's points while running: the run's total plus coins collected but not yet banked. */
 export function hudPointsWithRun(session: Session, runPoints: number): number {
   return awardPoints(session.state, runPoints).points;
+}
+
+/**
+ * Banks what the runner collected: its coin points go to the run's total and its seconds to the
+ * month's shopping time, which never goes past MONTH_RUN_SECONDS.
+ */
+export function bankRun(session: Session, progress: RunProgress): Session {
+  const { seconds } = progress;
+  if (!Number.isFinite(seconds) || seconds < 0) {
+    throw new Error('Run seconds must be a non-negative number.');
+  }
+  const banked = bankRunPoints(session, progress.points);
+  if (seconds === 0) return banked;
+  return { ...banked, runSeconds: Math.min(session.runSeconds + seconds, MONTH_RUN_SECONDS) };
+}
+
+/** Seconds of shopping left this month, counting `unbankedSeconds` the runner has not banked. */
+export function runSecondsLeft(session: Session, unbankedSeconds = 0): number {
+  return Math.max(MONTH_RUN_SECONDS - session.runSeconds - unbankedSeconds, 0);
+}
+
+/** True once the month's shopping time is used up and the statement should close. */
+export function isMonthRunOver(session: Session, unbankedSeconds = 0): boolean {
+  return runSecondsLeft(session, unbankedSeconds) === 0;
+}
+
+/** Whole seconds of shopping left, rounded up so the readout reaches 0:00 only at the end. */
+export function wholeRunSecondsLeft(session: Session, unbankedSeconds = 0): number {
+  return Math.max(Math.ceil(runSecondsLeft(session, unbankedSeconds) - 1e-9), 0);
+}
+
+/** Shopping time left as "1:15". Takes whole seconds from wholeRunSecondsLeft. */
+export function formatRunTimeLeft(wholeSeconds: number): string {
+  const seconds = Math.max(Math.floor(wholeSeconds), 0);
+  const minutes = Math.floor(seconds / 60);
+  return `${String(minutes)}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
 /** The player picked up the glowing shopping bag. */
@@ -305,7 +361,7 @@ export function confirmRepayment(session: Session, choice: RepaymentChoice): Ses
 /** Leaves the month summary: on to next month's money, or to the final quiz. */
 export function finishMonth(session: Session): Session {
   const cycle = transition(session.cycle, { type: 'MONTH_SUMMARY_DONE' });
-  const base: Session = { ...session, cycle, statement: null, repayment: null };
+  const base: Session = { ...session, cycle, statement: null, repayment: null, runSeconds: 0 };
   if (cycle.phase !== 'RUNNING') return base;
   const started = startNextMonth(session.state);
   return { ...base, state: started.next, budgetShortfall: started.budgetShortfall };
@@ -349,7 +405,8 @@ export function monthShortLabel(session: Session): string {
 /**
  * Where the player sits on the HUD timeline, from statement close (0) to payment due (1).
  * Until the statement is out the marker waits at the start, planning the payment is midway and a
- * settled month reaches the due date. The runner will drive this live in milestone 6.
+ * settled month reaches the due date. The runner does not move it: the month's shopping all
+ * happens before the statement closes, so the time left is shown separately (formatRunTimeLeft).
  */
 export function hudTimelineProgress(session: Session): number {
   switch (session.cycle.phase) {

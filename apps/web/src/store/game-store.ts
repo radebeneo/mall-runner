@@ -1,7 +1,7 @@
 import type { FundingSource, RepaymentChoice } from '@credit-runner/finance-engine';
 import { create } from 'zustand';
 import * as run from '../session/session';
-import type { Session } from '../session/session';
+import type { RunProgress, Session } from '../session/session';
 
 /**
  * How each month's shopping is played: RUNNER runs the 3D mall, DECISIONS skips straight to the
@@ -23,12 +23,15 @@ export interface GameStore {
   openOffer: () => void;
   decideOffer: (accepted: boolean) => void;
   endMonthRun: () => void;
-  /** Adds the runner's coin points to the run's total, e.g. before running again after a crash. */
-  bankRunPoints: (points: number) => void;
-  /** Banks the runner's coin points and ends the month's shopping. */
-  finishRun: (points: number) => void;
-  /** Banks the runner's coin points and opens the month's offer. */
-  openRunOffer: (points: number) => void;
+  /**
+   * Adds the runner's coin points and shopping time to the month, e.g. before running again
+   * after a crash.
+   */
+  bankRun: (progress: RunProgress) => void;
+  /** Banks the runner's progress and ends the month's shopping. */
+  finishRun: (progress: RunProgress) => void;
+  /** Banks the runner's progress and opens the month's offer. */
+  openRunOffer: (progress: RunProgress) => void;
   fundEvent: (source: FundingSource) => void;
   viewStatement: () => void;
   confirmRepayment: (choice: RepaymentChoice) => void;
@@ -68,14 +71,14 @@ export const useGameStore = create<GameStore>()((set, get) => {
     endMonthRun: () => {
       update(run.endMonthRun);
     },
-    bankRunPoints: (points) => {
-      update((session) => run.bankRunPoints(session, points));
+    bankRun: (progress) => {
+      update((session) => run.bankRun(session, progress));
     },
-    finishRun: (points) => {
-      update((session) => run.endMonthRun(run.bankRunPoints(session, points)));
+    finishRun: (progress) => {
+      update((session) => run.endMonthRun(run.bankRun(session, progress)));
     },
-    openRunOffer: (points) => {
-      update((session) => run.openOffer(run.bankRunPoints(session, points)));
+    openRunOffer: (progress) => {
+      update((session) => run.openOffer(run.bankRun(session, progress)));
     },
     fundEvent: (source) => {
       update((session) => run.fundEvent(session, source));

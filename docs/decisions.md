@@ -479,3 +479,58 @@ the pause card, and there is still no month timer.
   landscape confirm grounded props, no checkerboard, distinct wet-floor signs, and that the HUD
   coin and avatar load. (The points coin is hidden below `sm`, like every `StatPill` icon.)
 - Still to do: frame times on a low-end Android device.
+
+## 2026-11-06 — Milestone 6: integration
+
+The runner now drives the month cycle. A month of running ends the shopping and opens the
+statement, and the glowing bag opens the month's offer. The HUD reads its values from the store.
+
+### Month timer
+
+- A month runs for `MONTH_RUN_SECONDS = 75`, inside the brief's 60 to 90 seconds.
+- `Session.runSeconds` banks the month's simulated seconds. It is capped at 75 and reset to 0 by
+  `finishMonth`.
+- Only simulation steps count, so paused and crashed time does not use up the month.
+- `runSecondsLeft(session, unbanked)` and `isMonthRunOver(session, unbanked)` take the runner's
+  unbanked `runner.time`. The loop can check the timer every step without writing to the store.
+
+### Banking run progress
+
+- `RunProgress` is `{ points, seconds }`. `bankRun` adds both to the session.
+- Store actions: `bankRun`, `finishRun` (bank, then `endMonthRun`) and `openRunOffer` (bank, then
+  `openOffer`). They replace the old points-only banking action.
+- "Run again" after a crash banks the crashed run, then resets the runner. `resetRunner` zeroes
+  `runner.time`, so those seconds are not counted twice. The pause and crash cards use
+  `finishRun(progress())` and `openRunOffer(progress())`.
+
+### Handing off from the loop
+
+- `update` sets a local `handoff` (`'OFFER'` or `'FINISH'`) and skips further steps once set.
+- `render` then stops the loop once and calls `handOffMonth` through `queueMicrotask`. It does
+  nothing unless the phase is still `RUNNING`, so a late or repeated call is harmless.
+- Stopping inside `render` is safe: `frame()` requests the next frame before it calls `update`
+  and `render`, so `stop()` cancels that request. Stopping inside a step would not be.
+- `sessionRef` gives the loop the latest banked time without re-creating the loop on each store
+  change.
+- `onBag` fires even when the bag is hidden, so `RunScreen` opens an offer only when the month
+  still has one (`hasOfferRef.current`).
+
+### HUD timeline and time left
+
+- The timeline still runs from statement close (0) to payment due (1), and the runner does not
+  move the avatar. All of a month's shopping happens before the statement closes; moving the
+  avatar during the run would suggest shopping time counts toward the due date, which undercuts
+  learning goal 1 (closing date vs due date).
+- A separate "Shopping time left" readout (`role="timer"`) shows the month timer.
+  `wholeRunSecondsLeft` rounds up, so it reads 0:00 only when time is up, and
+  `formatRunTimeLeft` gives "1:15".
+- The loop writes the readout's text only when the whole second changes. React renders no
+  children in that element, so React and the loop never write to the same node, and no per-frame
+  value goes through React state.
+
+### Verification and follow-ups
+
+- 416 tests in 39 files pass, including the new `run-timer.test.ts` and store tests for
+  `bankRun`, `finishRun` and `openRunOffer`. Typecheck, lint and the format check are clean.
+- Still to do: a `RunScreen` test for the bag-to-offer and timer-to-statement handoffs, and a
+  hand check in the browser of a full 75-second month.
