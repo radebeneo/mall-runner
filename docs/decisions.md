@@ -395,6 +395,14 @@ the pause card, and there is still no month timer.
   `mall-background.jpg` (HUD baked in) was removed.
 - The coin is `coin-3d.png` exactly as supplied, emblem included (owner decision, 2026-11-06).
   Only its edges are cleaned and it is resized. The earlier plain-star replacement was dropped.
+- The HUD uses the same art (2026-11-06). The script also writes two small DOM images, outside
+  `assets/mall/` so the scene manifest and its pinned file list are unchanged:
+  - `packages/ui/src/assets/coin.webp` (96 × 96, from `coin-3d.png`). `CoinIcon` is now a
+    decorative `<img>` of it instead of the gold star SVG, in the HUD and on the offer screen.
+    `packages/ui/src/assets.d.ts` types `*.webp` imports, since the UI package has no Vite types.
+  - `apps/web/src/assets/art/runner-avatar.webp` (33 × 72, from the first runner atlas frame) for
+    the timeline avatar. The hand-cropped `runner-avatar.png` it replaces was fully opaque, with a
+    pale band baked into its lower rows, which showed as a strip under the avatar.
 - The bench and bucket are drawn from above, so their far feet and wheels sit higher in the image
   than the near ones. Standing them on the lowest pixel left the far ones floating. The script's
   `ground_contact` finds each foot or wheel and puts the pivot on the highest one; the manifest
@@ -463,9 +471,11 @@ the pause card, and there is still no month timer.
 
 ### Verification and follow-ups
 
-- 403 tests in 38 files pass (38 new). Coverage is unchanged: 100% statements, functions and
+- 404 tests in 38 files pass (39 new, including the `CoinIcon` image test). Coverage is unchanged: 100% statements, functions and
   lines, 99.8% branches.
 - The main chunk is 911.8 kB (251.9 kB gzipped), 25.3 kB (11.3 kB gzipped) more than before.
-- CM Browser couldn't open in this session, so the art pass hasn't been checked in real WebGL.
-  Frame times, draw calls, scroll direction, seams and prop clearance still need checking with
-  `?perf` at 390 px portrait, on desktop, in mobile landscape and on a low-end Android device.
+- Real WebGL with `?perf` on a desktop GPU: 60 fps, avg 16.7 ms, p95 17.4 ms, 27 draws, 29.4k
+  tris. Headless Chrome captures at 390 × 844 portrait, 1280 × 720 desktop and 844 × 390
+  landscape confirm grounded props, no checkerboard, distinct wet-floor signs, and that the HUD
+  coin and avatar load. (The points coin is hidden below `sm`, like every `StatPill` icon.)
+- Still to do: frame times on a low-end Android device.

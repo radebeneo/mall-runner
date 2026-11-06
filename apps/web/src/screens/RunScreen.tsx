@@ -18,7 +18,7 @@ import type { GameLoop, RunnerState } from '@credit-runner/game-core';
 import { Button, Disclaimer, Hud, Icon, ScreenPanel } from '@credit-runner/ui';
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import runnerAvatar from '../assets/art/runner-avatar.png';
+import runnerAvatar from '../assets/art/runner-avatar.webp';
 import { createFrameSummary, createFrameTimer, formatPerf } from '../scenes/frame-timer';
 import { loadedMallArt } from '../scenes/mall-art';
 import { createMallScene } from '../scenes/mall-scene';

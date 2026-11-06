@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import coinUrl from './assets/coin.webp';
 
 /** Line icons used across the HUD and decision screens. Decorative: always hidden from screen readers. */
 export type IconName =
@@ -204,21 +205,20 @@ export function Icon({ name, className = 'size-6', strokeWidth = 2 }: IconProps)
   );
 }
 
-/** The gold points coin from the HUD. Points are never money, so this is not a currency symbol. */
+/**
+ * The points coin: the same supplied coin art as the runner's collectible (built from
+ * 3D-assets/coin-3d.png by scripts/prepare-mall-assets.py). Points are never money, so the coin
+ * carries an emblem, not a currency symbol. Decorative: the label next to it carries the meaning.
+ */
 export function CoinIcon({ className = 'size-10' }: { className?: string }) {
   return (
-    <svg viewBox="0 0 40 40" aria-hidden="true" focusable="false" className={className}>
-      <circle cx="20" cy="20" r="19" fill="#c98a12" />
-      <circle cx="20" cy="20" r="16" fill="#f2b632" />
-      <circle cx="20" cy="20" r="12.5" fill="none" stroke="#c98a12" strokeWidth="1.5" />
-      <path
-        d="m20 11.5 2.6 5.4 5.9.8-4.3 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8-4.3-4.1 5.9-.8Z"
-        fill="#fff3c4"
-        stroke="#c98a12"
-        strokeWidth="1"
-        strokeLinejoin="round"
-      />
-    </svg>
+    <img
+      src={coinUrl}
+      alt=""
+      aria-hidden="true"
+      draggable={false}
+      className={`${className} object-contain`}
+    />
   );
 }
 

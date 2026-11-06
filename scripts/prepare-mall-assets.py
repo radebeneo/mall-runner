@@ -21,6 +21,9 @@ What it does (see docs/decisions.md, "Mall art pass"):
   widths disagree), aligns the head tops and torso centres, and packs uniform padded cells with
   one shared ground pivot.
 - coin-3d.png: used as supplied (edge clean-up and resizing only).
+- HUD images (DOM, not in the manifest): packages/ui/src/assets/coin.webp from coin-3d.png for
+  the points icon, and apps/web/src/assets/art/runner-avatar.webp from the first runner frame
+  for the timeline avatar. Both are real cut-outs with transparent backgrounds.
 - bench.png and wheeled-bucket.png are drawn from above, so their far legs and wheels end well
   above the lowest pixel. They stand on their highest foot or wheel instead (`ground_contact`),
   so nothing floats; the nearer feet reach just below the floor line.
@@ -46,6 +49,9 @@ from PIL import Image, ImageDraw, ImageFilter, features
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "3D-assets"
 OUT = ROOT / "apps" / "web" / "src" / "assets" / "mall"
+# Small DOM images for the HUD. They live outside OUT, so the scene manifest does not list them.
+HUD_UI = ROOT / "packages" / "ui" / "src" / "assets"
+HUD_WEB = ROOT / "apps" / "web" / "src" / "assets" / "art"
 PREVIEW = Path(
     os.environ.get("MALL_ASSET_PREVIEW_DIR", Path(tempfile.gettempdir()) / "mall-asset-previews")
 )
@@ -163,6 +169,31 @@ def fit_prop(rgba: np.ndarray, max_w: int, max_h: int) -> tuple[np.ndarray, dict
     canvas = np.zeros((th + 2 * PAD, tw + 2 * PAD, 4), np.float32)
     canvas[PAD : PAD + th, PAD : PAD + tw] = small
     return finalize(canvas), {"sourceBox": [x0, y0, cw, ch], "contentRect": [PAD, PAD, tw, th]}
+
+
+def hud_image(rgba: np.ndarray, box_w: int | None, box_h: int, pad: int = 2) -> np.ndarray:
+    """Crops a cut-out to its alpha bounds and fits it in a small HUD image, centred.
+
+    With `box_w` None the width follows the content's aspect ratio (a tight crop).
+    """
+    x0, y0, x1, y1 = alpha_bbox(rgba[..., 3])
+    crop = rgba[y0:y1, x0:x1]
+    cw, ch = x1 - x0, y1 - y0
+    if box_w is None:
+        box_w = round(cw * (box_h - 2 * pad) / ch) + 2 * pad
+    scale = min((box_w - 2 * pad) / cw, (box_h - 2 * pad) / ch)
+    tw, th = max(1, round(cw * scale)), max(1, round(ch * scale))
+    small = resize_premultiplied(crop, (tw, th))
+    canvas = np.zeros((box_h, box_w, 4), np.float32)
+    ox, oy = (box_w - tw) // 2, (box_h - th) // 2
+    canvas[oy : oy + th, ox : ox + tw] = small
+    return finalize(canvas)
+
+
+def save_hud(image: Image.Image, path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    image.save(path, "WEBP", quality=92, alpha_quality=100, method=6, exact=True)
+    return path
 
 
 def save(image: Image.Image, name: str, quality: int = 90) -> Path:
@@ -665,6 +696,23 @@ def main() -> None:
             ],
         },
     )
+
+    # HUD images (DOM, not textures): the points coin and the avatar on the run timeline.
+    # Both are drawn at 2x their CSS size: the coin up to 48 px (size-12), the avatar 36 px tall (h-9).
+    first = runner["frames"][0]
+    hud = [
+        ("coin", HUD_UI / "coin.webp", hud_image(clean_edges(load("coin-3d.png")), 96, 96)),
+        (
+            "runner-avatar",
+            HUD_WEB / "runner-avatar.webp",
+            hud_image(atlas[first["y"] : first["y"] + first["h"], first["x"] : first["x"] + first["w"]], None, 72, 1),
+        ),
+    ]
+    for hud_id, hud_path, hud_rgba in hud:
+        hud_img = to_image(hud_rgba)
+        save_hud(hud_img, hud_path)
+        previews.append((f"hud-{hud_id}", hud_img))
+        print(f"{hud_path.relative_to(ROOT).as_posix():44} {hud_img.width}x{hud_img.height} {hud_path.stat().st_size / 1024:7.1f} KiB (HUD)")
 
     palette = floor_palette(load("floor.png"))
     tile = floor_tile(palette)
