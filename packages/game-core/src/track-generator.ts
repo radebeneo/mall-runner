@@ -19,7 +19,9 @@ export interface EntitySize {
 }
 
 export const ENTITY_SIZES: Readonly<Record<EntityKind, EntitySize>> = Object.freeze({
-  WET_FLOOR: { width: 0.8, height: 0.7, depth: 0.5, bottom: 0 },
+  // Tall enough that the sign never reads as a coin (coins float at 0.5 to 1.1 m); still under
+  // the jump's peak, so it is cleared by jumping.
+  WET_FLOOR: { width: 0.8, height: 1.0, depth: 0.5, bottom: 0 },
   CART: { width: 1.2, height: 1.5, depth: 1.4, bottom: 0 },
   BANNER: { width: 1.4, height: 0.9, depth: 0.3, bottom: 1.1 },
   COIN: { width: 0.6, height: 0.6, depth: 0.6, bottom: 0.5 },

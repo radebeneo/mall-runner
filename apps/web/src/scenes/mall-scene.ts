@@ -3,9 +3,16 @@
 // plain objects and writes instance matrices, with no allocations and no React
 // (AGENTS.md section 7, rules 1 to 4).
 //
+// Two looks share one layout. With the prepared art (src/assets/mall) the coins, the bucket, the
+// wet-floor sign, the runner and the side props are camera-facing cut-outs, and the floor uses
+// the generated stone tile. Without it (still loading, failed, or no art) everything is drawn
+// with the low-poly procedural models. The corridor, shopfronts, banner and bag are real 3D in
+// both looks.
+//
 // Game space has z as the distance ahead of the player; Three.js looks down -z, so a game z
 // becomes a Three.js z of -z.
 import {
+  ENTITY_SIZES,
   type EntityKind,
   type Lane,
   type RunnerConfig,
@@ -27,6 +34,7 @@ import {
   CylinderGeometry,
   DirectionalLight,
   Fog,
+  Group,
   HemisphereLight,
   InstancedMesh,
   type Material,
@@ -40,17 +48,34 @@ import {
   Scene,
   SphereGeometry,
   SRGBColorSpace,
+  type Texture,
   TorusGeometry,
   Vector3,
   WebGLRenderer,
 } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { createRunnerFigure } from './runner-figure';
+import { cutoutMaterial, quadGeometry, yawToward } from './billboard';
+import { type MallArt, type MallTextureId, type SceneTextures, cloneArtTextures } from './mall-art';
+import {
+  DECOR_PROPS,
+  DECOR_SPACING,
+  type DecorProp,
+  INLAY_BAND_WIDTH,
+  PILLAR_ALONG,
+  SHOPFRONT_OFFSET,
+  SHOPFRONT_RELIEF,
+  decorAt,
+  hashSlot,
+  outerLaneEdge,
+} from './mall-layout';
+import { type MallManifest, type PropId, propQuad, runnerQuads } from './mall-manifest';
+import { type RunnerFigure, createRunnerFigure } from './runner-figure';
+import { createSpriteRunnerFigure } from './runner-sprite';
 
 /** AGENTS.md section 7, rule 4. */
 const MAX_DPR = 2;
 
-const FOG_COLOUR = '#d8d1c4';
+const FOG_COLOUR = '#ddd5c6';
 const FLOOR_WIDTH = 13;
 /** The corridor runs from just behind the player to past the generated track, in game z. */
 const FLOOR_NEAR = -14;
@@ -58,18 +83,21 @@ const FLOOR_FAR = 150;
 const LENGTH = FLOOR_FAR - FLOOR_NEAR;
 /** Three.js z of the corridor's middle. */
 const MIDDLE_Z = -(FLOOR_NEAR + FLOOR_FAR) / 2;
-/** Floor texture repeat, in metres: 2 x 2 tiles of 1 m. */
-const FLOOR_TILE_METRES = 2;
+/** The procedural floor texture repeats every 2 m (2 x 2 tiles of 1 m). */
+const PROCEDURAL_TILE_METRES = 2;
 
-/** Shops, pillars and lamps repeat every few metres and scroll with the floor. */
-const DECOR_SPACING = 8;
 const DECOR_COUNT = Math.ceil(LENGTH / DECOR_SPACING) + 1;
-const SHOP_X = 6;
+const SHOP_X = SHOPFRONT_OFFSET;
 const UPPER_SHOP_X = 7.2;
 const UPPER_Y = 4.8;
 const PILLAR_X = 4.5;
-/** Shop sign colours. No text or real brands on any sign (AGENTS.md section 3). */
-const SIGN_COLOURS = ['#e94e77', '#2f9e57', '#f0a024', '#5b3d8f', '#2d8fd5', '#ff7a45'];
+/** Shop sign colours: warm accents to sit with the cream stone. No text or brands (section 3). */
+const SIGN_COLOURS = ['#b5653f', '#5f8a6b', '#d49a3a', '#6b4a7a', '#3f7f86', '#a8473f', '#3b3f47'];
+
+const CHARCOAL = '#2a2d33';
+const METAL = '#3b3f47';
+const TERRACOTTA = '#b5653f';
+const GLASS = '#d3e6ea';
 
 /** The offer label shows while the bag is between these distances ahead. */
 const OFFER_LABEL_NEAR = 2;
@@ -91,11 +119,28 @@ export interface OfferMarker {
   y: number;
 }
 
+/** The last frame's renderer counts, for the `?perf` readout. */
+export interface SceneStats {
+  drawCalls: number;
+  triangles: number;
+}
+
+export interface MallSceneOptions {
+  /** The prepared art, or null (the default) for the procedural mall. */
+  art?: MallArt | null;
+  /** Turns off decorative motion: coin bob and shimmer, bag bob and the stumble wobble. */
+  reducedMotion?: boolean;
+}
+
 export interface MallScene {
   /** Draws the offer bag and the pink offer lane. Off once the month's offer is decided. */
   showOffers: boolean;
   /** Updated by `render`. */
   readonly offer: OfferMarker;
+  /** True when the prepared art is drawn, false for the procedural mall. */
+  readonly usesArt: boolean;
+  /** Updated by `render`. */
+  readonly stats: SceneStats;
   resize: (width: number, height: number) => void;
   /** Draws a frame. `lead` is how many seconds the frame is past the last simulation step. */
   render: (runner: RunnerState, lead: number) => void;
@@ -153,15 +198,19 @@ function coinModel(): BufferGeometry {
   ]);
 }
 
-/** The yellow A-frame sign. */
+/** The model's height before scaling: the top of the cone. */
+const WET_FLOOR_MODEL_HEIGHT = 0.8;
+
+/** The yellow A-frame sign, scaled to its hitbox height and kept inside its width. */
 function wetFloorModel(): BufferGeometry {
+  const { width, height } = ENTITY_SIZES.WET_FLOOR;
   return merge([
     part(new BoxGeometry(0.7, 0.75, 0.04), '#f5c518', { y: 0.36, z: 0.11, rx: -0.3 }),
     part(new BoxGeometry(0.7, 0.75, 0.04), '#f5c518', { y: 0.36, z: -0.11, rx: 0.3 }),
     part(new BoxGeometry(0.5, 0.1, 0.05), '#1b1f1d', { y: 0.46, z: 0.11, rx: -0.3 }),
     part(new BoxGeometry(0.5, 0.1, 0.05), '#1b1f1d', { y: 0.46, z: -0.11, rx: 0.3 }),
     part(new ConeGeometry(0.06, 0.08, 4), '#1b1f1d', { y: 0.76 }),
-  ]);
+  ]).scale(Math.min(1, (width * 0.95) / 0.7), height / WET_FLOOR_MODEL_HEIGHT, 1);
 }
 
 /** The cleaning cart: body, tray, bucket, mop and wheels. */
@@ -188,36 +237,96 @@ function cartModel(): BufferGeometry {
   ]);
 }
 
-/** A hanging sale banner, rolled under. Its cords run up toward the balcony. */
+/**
+ * A banner hanging from a dark rod on two long cords, so it reads as overhead (roll under it).
+ * Teal cloth with a cream stripe keeps it apart from the pink offer bag. Text-free.
+ */
 function bannerModel(): BufferGeometry {
   return merge([
-    part(new BoxGeometry(1.4, 0.9, 0.08), '#e94e77', { y: 0.45 }),
-    part(new BoxGeometry(1.2, 0.16, 0.09), '#fcfaf5', { y: 0.45 }),
-    part(new CylinderGeometry(0.02, 0.02, 2.2, 6), '#3b3f47', { x: -0.6, y: 2.0 }),
-    part(new CylinderGeometry(0.02, 0.02, 2.2, 6), '#3b3f47', { x: 0.6, y: 2.0 }),
+    part(new BoxGeometry(1.4, 0.9, 0.06), '#2f6f73', { y: 0.45 }),
+    part(new BoxGeometry(1.4, 0.12, 0.07), '#f3ead8', { y: 0.26 }),
+    part(new BoxGeometry(1.4, 0.05, 0.075), TERRACOTTA, { y: 0.05 }),
+    part(new CylinderGeometry(0.035, 0.035, 1.62, 8), CHARCOAL, { y: 0.92, rz: Math.PI / 2 }),
+    part(new CylinderGeometry(0.015, 0.015, 2.7, 5), METAL, { x: -0.62, y: 2.27 }),
+    part(new CylinderGeometry(0.015, 0.015, 2.7, 5), METAL, { x: 0.62, y: 2.27 }),
   ]);
 }
 
-/** The glowing shopping bag that marks an offer. */
+/** The glowing pink shopping bag that marks an offer: handles and a blank tag, no text. */
 function bagModel(): BufferGeometry {
   return merge([
-    part(new BoxGeometry(0.6, 0.62, 0.28), '#ff5fa8', { y: 0.31 }),
-    part(new BoxGeometry(0.62, 0.06, 0.29), '#ff8cc2', { y: 0.6 }),
-    part(new TorusGeometry(0.15, 0.025, 6, 12, Math.PI), '#7a1f4f', { y: 0.62 }),
+    part(new BoxGeometry(0.62, 0.66, 0.3), '#ff5fa8', { y: 0.33 }),
+    part(new BoxGeometry(0.64, 0.07, 0.31), '#ffd1e6', { y: 0.63 }),
+    part(new TorusGeometry(0.16, 0.03, 6, 14, Math.PI), '#7a1f4f', { y: 0.66, z: 0.07 }),
+    part(new TorusGeometry(0.16, 0.03, 6, 14, Math.PI), '#7a1f4f', { y: 0.66, z: -0.07 }),
+    part(new BoxGeometry(0.16, 0.2, 0.02), '#fcfaf5', { x: 0.18, y: 0.32, z: 0.16, rz: 0.2 }),
   ]);
 }
 
-/** A shopfront facing +x, with its front at x = 0. The sign band is a separate mesh. */
-function shopModel(): BufferGeometry {
+/**
+ * A shopfront facing +x with its front at x = 0: two windows either side of a recessed
+ * entrance. The sign band is a separate mesh.
+ */
+function glazedShopModel(): BufferGeometry {
+  const windows = [-1, 1].flatMap((end) => [
+    part(new BoxGeometry(0.5, 4.2, 3.0), METAL, { x: -0.25, y: 2.1, z: end * 2.3 }),
+    part(new BoxGeometry(0.1, 2.7, 2.9), GLASS, { x: 0.02, y: 1.55, z: end * 2.3 }),
+    part(new BoxGeometry(0.16, 0.18, 3.0), CHARCOAL, { x: 0.04, y: 0.09, z: end * 2.3 }),
+    part(new BoxGeometry(0.14, 2.9, 0.16), CHARCOAL, { x: 0.04, y: 1.45, z: end * 0.8 }),
+    part(new BoxGeometry(0.14, 2.9, 0.16), CHARCOAL, { x: 0.04, y: 1.45, z: end * 3.72 }),
+  ]);
   return merge([
-    part(new BoxGeometry(1.2, 4.2, 7.6), '#3b3f47', { x: -0.6, y: 2.1 }),
-    part(new BoxGeometry(0.1, 2.7, 6.4), '#d6ecf2', { x: 0.02, y: 1.55 }),
-    part(new BoxGeometry(0.12, 2.7, 0.18), '#3b3f47', { x: 0.06, y: 1.55 }),
-    part(new BoxGeometry(0.14, 0.18, 7.6), '#2a2d33', { x: 0.03, y: 0.09 }),
+    part(new BoxGeometry(0.7, 4.2, 7.6), METAL, { x: -0.85, y: 2.1 }),
+    ...windows,
+    // The recessed entrance: a lintel over a warm, lit interior.
+    part(new BoxGeometry(0.5, 1.6, 1.6), METAL, { x: -0.25, y: 3.4 }),
+    part(new BoxGeometry(0.04, 2.6, 1.6), '#7a6656', { x: -0.48, y: 1.3 }),
+    part(new BoxGeometry(0.5, 0.08, 1.6), CHARCOAL, { x: -0.25, y: 2.6 }),
+    // Goods in the windows, as plain shapes.
+    part(new BoxGeometry(0.04, 0.8, 0.7), TERRACOTTA, { x: 0.09, y: 0.9, z: -2.8 }),
+    part(new BoxGeometry(0.04, 1.1, 0.5), '#5f8a6b', { x: 0.09, y: 1.05, z: -1.7 }),
+    part(new BoxGeometry(0.04, 0.6, 0.9), '#f3ead8', { x: 0.09, y: 0.8, z: 2.4 }),
   ]);
 }
 
-function createFloorTexture(anisotropy: number): CanvasTexture {
+/** A shopfront facing +x with a display bay standing out, a canopy and a glazed door. */
+function displayShopModel(): BufferGeometry {
+  const relief = SHOPFRONT_RELIEF;
+  return merge([
+    part(new BoxGeometry(1.2, 4.2, 7.6), METAL, { x: -0.6, y: 2.1 }),
+    part(new BoxGeometry(relief, 2.2, 3.4), GLASS, { x: relief / 2, y: 1.4, z: -1.7 }),
+    part(new BoxGeometry(relief + 0.04, 0.3, 3.44), CHARCOAL, { x: relief / 2, y: 0.15, z: -1.7 }),
+    part(new BoxGeometry(relief + 0.06, 0.1, 3.5), CHARCOAL, { x: relief / 2, y: 2.55, z: -1.7 }),
+    part(new BoxGeometry(0.04, 0.9, 0.8), '#d49a3a', { x: relief + 0.01, y: 0.95, z: -2.4 }),
+    part(new BoxGeometry(0.04, 1.3, 0.6), '#6b4a7a', { x: relief + 0.01, y: 1.15, z: -1.1 }),
+    part(new BoxGeometry(0.08, 2.4, 0.9), GLASS, { x: 0.02, y: 1.4, z: 0.7 }),
+    part(new BoxGeometry(0.08, 2.6, 1.8), '#7a6656', { x: 0.02, y: 1.3, z: 2.2 }),
+    part(new BoxGeometry(0.12, 2.8, 0.14), CHARCOAL, { x: 0.04, y: 1.4, z: 1.25 }),
+    part(new BoxGeometry(0.12, 2.8, 0.14), CHARCOAL, { x: 0.04, y: 1.4, z: 3.15 }),
+    part(new BoxGeometry(0.7, 0.08, 7.2), TERRACOTTA, { x: 0.35, y: 2.95 }),
+    part(new BoxGeometry(0.14, 0.18, 7.6), CHARCOAL, { x: 0.03, y: 0.09 }),
+  ]);
+}
+
+/** A cream pillar with dark metal at its foot and top. */
+function pillarModel(): BufferGeometry {
+  return merge([
+    part(new CylinderGeometry(0.26, 0.3, 4.45, 12), '#f6f2ea', { y: 2.225 }),
+    part(new CylinderGeometry(0.34, 0.34, 0.16, 12), METAL, { y: 0.08 }),
+    part(new CylinderGeometry(0.34, 0.3, 0.16, 12), METAL, { y: 4.37 }),
+  ]);
+}
+
+/** A pendant lamp on a thin rod from the ceiling. */
+function lampModel(): BufferGeometry {
+  return merge([
+    part(new CylinderGeometry(0.015, 0.015, 2.0, 5), METAL, { y: 8.5 }),
+    part(new CylinderGeometry(0.12, 0.3, 0.22, 12), CHARCOAL, { y: 7.62 }),
+    part(new SphereGeometry(0.26, 10, 8), '#fff1cc', { y: 7.42 }),
+  ]);
+}
+
+function createFloorTexture(): CanvasTexture {
   const size = 128;
   const half = size / 2;
   const canvas = document.createElement('canvas');
@@ -241,8 +350,6 @@ function createFloorTexture(anisotropy: number): CanvasTexture {
   texture.colorSpace = SRGBColorSpace;
   texture.wrapS = RepeatWrapping;
   texture.wrapT = RepeatWrapping;
-  texture.anisotropy = Math.min(anisotropy, 8);
-  texture.repeat.set(FLOOR_WIDTH / FLOOR_TILE_METRES, LENGTH / FLOOR_TILE_METRES);
   return texture;
 }
 
@@ -250,37 +357,67 @@ function createFloorTexture(anisotropy: number): CanvasTexture {
 // The corridor
 // ---------------------------------------------------------------------------------------------
 
-/** Floor, lane lines, balconies and ceiling. None of it moves; the floor texture scrolls. */
-function buildCorridor(
-  scene: Scene,
-  config: Readonly<RunnerConfig>,
-  floorTexture: CanvasTexture,
-): void {
-  scene.add(
-    new Mesh(
-      new PlaneGeometry(FLOOR_WIDTH, LENGTH).rotateX(-Math.PI / 2).translate(0, 0, MIDDLE_Z),
-      new MeshLambertMaterial({ map: floorTexture }),
-    ),
-  );
+/**
+ * A flat strip of floor whose UVs are in world units: one texture repeat every `across` by
+ * `along` metres, with u = 0 at x = `uOrigin`. It runs `extend` metres past the far end, so the
+ * floor group can scroll by up to one repeat without a gap.
+ */
+function floorStrip(
+  left: number,
+  right: number,
+  across: number,
+  along: number,
+  uOrigin: number,
+  lift: number,
+  extend: number,
+): BufferGeometry {
+  const geometry = new PlaneGeometry(right - left, LENGTH + extend)
+    .rotateX(-Math.PI / 2)
+    .translate((left + right) / 2, lift, -(FLOOR_NEAR + FLOOR_FAR + extend) / 2);
+  const position = geometry.getAttribute('position');
+  const uv = geometry.getAttribute('uv');
+  for (let i = 0; i < position.count; i++) {
+    uv.setXY(i, (position.getX(i) - uOrigin) / across, -position.getZ(i) / along);
+  }
+  return geometry;
+}
 
-  // White lines on the lane edges.
+/** The two inlay bands just outside the outer lanes. */
+function bandStrips(config: Readonly<RunnerConfig>, along: number, extend: number): BufferGeometry {
+  const inner = outerLaneEdge(config);
+  const outer = inner + INLAY_BAND_WIDTH;
+  return merge([
+    floorStrip(-outer, -inner, INLAY_BAND_WIDTH, along, -outer, 0.005, extend),
+    floorStrip(inner, outer, INLAY_BAND_WIDTH, along, inner, 0.005, extend),
+  ]);
+}
+
+/** Lane lines, balconies and ceiling. None of it moves. */
+function buildCorridor(scene: Scene, config: Readonly<RunnerConfig>, withArt: boolean): void {
+  // Thin lines on the lane edges: bright on the procedural floor, a soft cream inlay on the
+  // stone, where the grout also falls on the lane edges.
   const lines = [-1.5, -0.5, 0.5, 1.5].map((edge) =>
-    new PlaneGeometry(0.07, LENGTH)
+    new PlaneGeometry(withArt ? 0.05 : 0.07, LENGTH)
       .rotateX(-Math.PI / 2)
       .translate(edge * config.laneWidth, 0.01, MIDDLE_Z),
   );
   scene.add(
     new Mesh(
       merge(lines),
-      new MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.9 }),
+      new MeshBasicMaterial({
+        color: withArt ? '#fffaf0' : '#ffffff',
+        transparent: true,
+        opacity: withArt ? 0.6 : 0.9,
+        depthWrite: false,
+      }),
     ),
   );
 
-  // The upper level: balcony slabs and rails on both sides.
+  // The upper level: balcony slabs and dark metal rails on both sides.
   const balconies = [-1, 1].flatMap((side) => [
     part(new BoxGeometry(2.9, 0.35, LENGTH), '#efe9df', { x: side * 5.75, y: 4.62, z: MIDDLE_Z }),
-    part(new BoxGeometry(0.1, 0.08, LENGTH), '#3b3f47', { x: side * 4.32, y: 5.84, z: MIDDLE_Z }),
-    part(new BoxGeometry(0.08, 0.06, LENGTH), '#3b3f47', { x: side * 4.32, y: 4.83, z: MIDDLE_Z }),
+    part(new BoxGeometry(0.1, 0.08, LENGTH), METAL, { x: side * 4.32, y: 5.84, z: MIDDLE_Z }),
+    part(new BoxGeometry(0.08, 0.06, LENGTH), METAL, { x: side * 4.32, y: 4.83, z: MIDDLE_Z }),
   ]);
   scene.add(new Mesh(merge(balconies), new MeshLambertMaterial({ vertexColors: true })));
 
@@ -328,44 +465,63 @@ const SHOP_ROWS: readonly ShopRow[] = [
   { x: UPPER_SHOP_X, y: UPPER_Y, turn: Math.PI },
 ];
 
-/** Shopfronts, pillars and lamps that scroll past in a seamless loop. */
-function createDecor(scene: Scene): (distance: number) => void {
+type DecorMeshes = Readonly<Record<DecorProp, InstancedMesh>>;
+
+/**
+ * Shopfronts, pillars, lamps, skylight ribs and (with the art) the side props, scrolling past in
+ * a seamless loop. Each slot's look comes from a hash of its place in the mall, so it never
+ * changes as it scrolls.
+ */
+function createDecor(
+  scene: Scene,
+  props: DecorMeshes | null,
+): (distance: number, cameraX: number, cameraZ: number) => void {
   const slots = DECOR_COUNT * SHOP_ROWS.length;
-  const shops = new InstancedMesh(
-    shopModel(),
-    new MeshLambertMaterial({ vertexColors: true }),
-    slots,
-  );
+  const shopMaterial = new MeshLambertMaterial({ vertexColors: true });
+  const glazed = new InstancedMesh(glazedShopModel(), shopMaterial, slots);
+  const display = new InstancedMesh(displayShopModel(), shopMaterial, slots);
   const signs = new InstancedMesh(
     new BoxGeometry(0.3, 0.7, 6.8).translate(0.15, 3.45, 0),
     new MeshLambertMaterial({ color: '#ffffff' }),
     slots,
   );
   const pillars = new InstancedMesh(
-    new CylinderGeometry(0.26, 0.3, 4.45, 10).translate(0, 2.225, 0),
-    new MeshLambertMaterial({ color: '#f6f2ea' }),
+    pillarModel(),
+    new MeshLambertMaterial({ vertexColors: true }),
     DECOR_COUNT * 2,
   );
   const lamps = new InstancedMesh(
-    new SphereGeometry(0.32, 10, 8).translate(0, 7.4, 0),
-    new MeshBasicMaterial({ color: '#fff1cc' }),
+    lampModel(),
+    new MeshBasicMaterial({ vertexColors: true }),
     DECOR_COUNT,
   );
-  for (const mesh of [shops, signs, pillars, lamps]) {
+  const ribs = new InstancedMesh(
+    new BoxGeometry(3.6, 0.14, 0.14).translate(0, 9.48, 0),
+    new MeshLambertMaterial({ color: METAL }),
+    DECOR_COUNT * 2,
+  );
+  const meshes: InstancedMesh[] = [glazed, display, signs, pillars, lamps, ribs];
+  if (props !== null) for (const prop of DECOR_PROPS) meshes.push(props[prop]);
+  for (const mesh of meshes) {
     mesh.frustumCulled = false;
     scene.add(mesh);
   }
 
   const palette = SIGN_COLOURS.map((colour) => new Color(colour));
   const dummy = new Object3D();
-  let colourBase = -1;
+  const propCounts: Record<DecorProp, number> = { plant: 0, bench: 0, 'sale-board': 0 };
+  let colourBase = Number.NaN;
 
-  return (distance) => {
+  return (distance, cameraX, cameraZ) => {
     const base = Math.floor(distance / DECOR_SPACING);
     const shift = distance - base * DECOR_SPACING;
     const recolour = base !== colourBase;
+    let glazedCount = 0;
+    let displayCount = 0;
+    for (let p = 0; p < DECOR_PROPS.length; p++) propCounts[DECOR_PROPS[p] as DecorProp] = 0;
 
     for (let i = 0; i < DECOR_COUNT; i++) {
+      const slot = base + i;
       const z = -(FLOOR_NEAR + i * DECOR_SPACING - shift);
       for (let row = 0; row < SHOP_ROWS.length; row++) {
         const { x, y, turn } = SHOP_ROWS[row] as ShopRow;
@@ -373,16 +529,22 @@ function createDecor(scene: Scene): (distance: number) => void {
         dummy.position.set(x, y, z);
         dummy.rotation.set(0, turn, 0);
         dummy.updateMatrix();
-        shops.setMatrixAt(index, dummy.matrix);
+        if ((hashSlot(slot, 20 + row) & 1) === 0) {
+          glazed.setMatrixAt(glazedCount, dummy.matrix);
+          glazedCount += 1;
+        } else {
+          display.setMatrixAt(displayCount, dummy.matrix);
+          displayCount += 1;
+        }
         signs.setMatrixAt(index, dummy.matrix);
         // A shop keeps its colour as it scrolls: the colour follows its place in the mall.
         if (recolour) {
-          signs.setColorAt(index, palette[(base + i + row * 2) % palette.length] as Color);
+          signs.setColorAt(index, palette[hashSlot(slot, 10 + row) % palette.length] as Color);
         }
       }
 
       dummy.rotation.set(0, 0, 0);
-      dummy.position.set(-PILLAR_X, 0, z - DECOR_SPACING / 2);
+      dummy.position.set(-PILLAR_X, 0, z - PILLAR_ALONG);
       dummy.updateMatrix();
       pillars.setMatrixAt(i * 2, dummy.matrix);
       dummy.position.x = PILLAR_X;
@@ -392,16 +554,130 @@ function createDecor(scene: Scene): (distance: number) => void {
       dummy.position.set(0, 0, z);
       dummy.updateMatrix();
       lamps.setMatrixAt(i, dummy.matrix);
+      ribs.setMatrixAt(i * 2, dummy.matrix);
+      dummy.position.z = z - DECOR_SPACING / 2;
+      dummy.updateMatrix();
+      ribs.setMatrixAt(i * 2 + 1, dummy.matrix);
+
+      if (props === null) continue;
+      for (let s = 0; s < 2; s++) {
+        const side = s === 0 ? -1 : 1;
+        const placement = decorAt(slot, side);
+        if (placement === null) continue;
+        const px = side * placement.offset;
+        const pz = z - placement.along;
+        dummy.position.set(px, 0, pz);
+        // Cut-outs turn to the camera, so they never show an edge or a mirrored back.
+        dummy.rotation.set(0, yawToward(px, pz, cameraX, cameraZ), 0);
+        dummy.updateMatrix();
+        const count = propCounts[placement.prop];
+        props[placement.prop].setMatrixAt(count, dummy.matrix);
+        propCounts[placement.prop] = count + 1;
+      }
     }
 
-    shops.instanceMatrix.needsUpdate = true;
+    glazed.count = glazedCount;
+    display.count = displayCount;
+    glazed.instanceMatrix.needsUpdate = true;
+    display.instanceMatrix.needsUpdate = true;
     signs.instanceMatrix.needsUpdate = true;
     pillars.instanceMatrix.needsUpdate = true;
     lamps.instanceMatrix.needsUpdate = true;
+    ribs.instanceMatrix.needsUpdate = true;
+    if (props !== null) {
+      for (let p = 0; p < DECOR_PROPS.length; p++) {
+        const prop = DECOR_PROPS[p] as DecorProp;
+        props[prop].count = propCounts[prop];
+        props[prop].instanceMatrix.needsUpdate = true;
+      }
+    }
     if (recolour) {
       colourBase = base;
       if (signs.instanceColor !== null) signs.instanceColor.needsUpdate = true;
     }
+  };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Track items
+// ---------------------------------------------------------------------------------------------
+
+interface EntityLook {
+  readonly mesh: InstancedMesh;
+  /** A cut-out that turns to face the camera, instead of a model that is spun or left square. */
+  readonly billboard: boolean;
+  /** A floor decal showing the hitbox's footprint under a cut-out, or null. */
+  readonly decal: InstancedMesh | null;
+}
+
+/** A flat ellipse on the floor covering a hitbox's width and depth. */
+function footprintDecal(
+  kind: EntityKind,
+  colour: ColorRepresentation,
+  opacity: number,
+): InstancedMesh {
+  const { width, depth } = ENTITY_SIZES[kind];
+  return new InstancedMesh(
+    new CircleGeometry(0.5, 24).rotateX(-Math.PI / 2).scale(width, 1, depth),
+    new MeshBasicMaterial({ color: colour, transparent: true, opacity, depthWrite: false }),
+    CAPACITY[kind],
+  );
+}
+
+interface ArtLook {
+  readonly manifest: MallManifest;
+  readonly textures: Readonly<Record<MallTextureId, Texture>>;
+}
+
+function cutoutMesh(look: ArtLook, id: PropId, capacity: number): InstancedMesh {
+  return new InstancedMesh(
+    quadGeometry(propQuad(look.manifest.props[id])),
+    cutoutMaterial(look.textures[id]),
+    capacity,
+  );
+}
+
+function entityLooks(look: ArtLook | null): Record<EntityKind, EntityLook> {
+  const solid = (geometry: BufferGeometry, material: Material, kind: EntityKind): EntityLook => ({
+    mesh: new InstancedMesh(geometry, material, CAPACITY[kind]),
+    billboard: false,
+    decal: null,
+  });
+  const banner = solid(bannerModel(), new MeshLambertMaterial({ vertexColors: true }), 'BANNER');
+  const bag = solid(
+    bagModel(),
+    new MeshLambertMaterial({ vertexColors: true, emissive: '#ff3d96', emissiveIntensity: 0.55 }),
+    'BAG',
+  );
+  if (look === null) {
+    const plain = new MeshLambertMaterial({ vertexColors: true });
+    return {
+      COIN: solid(
+        coinModel(),
+        new MeshLambertMaterial({ vertexColors: true, emissive: '#5c3b00' }),
+        'COIN',
+      ),
+      WET_FLOOR: solid(wetFloorModel(), plain, 'WET_FLOOR'),
+      CART: solid(cartModel(), plain, 'CART'),
+      BANNER: banner,
+      BAG: bag,
+    };
+  }
+  return {
+    COIN: { mesh: cutoutMesh(look, 'coin', CAPACITY.COIN), billboard: true, decal: null },
+    WET_FLOOR: {
+      mesh: cutoutMesh(look, 'wet-floor', CAPACITY.WET_FLOOR),
+      billboard: true,
+      // A puddle as wide as the hitbox: the sign itself is narrower than the space it blocks.
+      decal: footprintDecal('WET_FLOOR', '#8fb3c4', 0.5),
+    },
+    CART: {
+      mesh: cutoutMesh(look, 'bucket', CAPACITY.CART),
+      billboard: true,
+      decal: footprintDecal('CART', '#000000', 0.22),
+    },
+    BANNER: banner,
+    BAG: bag,
   };
 }
 
@@ -413,7 +689,15 @@ function createDecor(scene: Scene): (distance: number) => void {
  * Builds the mall into `container`. Throws when WebGL is unavailable, so the caller can offer
  * decisions-only play instead (AGENTS.md section 7, rule 7).
  */
-export function createMallScene(container: HTMLElement, config: Readonly<RunnerConfig>): MallScene {
+export function createMallScene(
+  container: HTMLElement,
+  config: Readonly<RunnerConfig>,
+  options: MallSceneOptions = {},
+): MallScene {
+  const art = options.art ?? null;
+  const reducedMotion = options.reducedMotion ?? false;
+
+  // Created first: it throws without WebGL, before anything else is allocated.
   const renderer = new WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_DPR));
   const canvas = renderer.domElement;
@@ -427,43 +711,99 @@ export function createMallScene(container: HTMLElement, config: Readonly<RunnerC
   scene.fog = new Fog(FOG_COLOUR, 40, FLOOR_FAR - 10);
   const camera = new PerspectiveCamera(55, 1, 0.1, FLOOR_FAR + 20);
 
+  // Skylight daylight: a warm sky and bounce, and soft sun from above.
   scene.add(new HemisphereLight('#fff8ec', '#8f887c', 2.4));
   const sun = new DirectionalLight('#ffffff', 1.4);
   sun.position.set(4, 12, 8);
   scene.add(sun);
 
-  const floorTexture = createFloorTexture(renderer.capabilities.getMaxAnisotropy());
-  buildCorridor(scene, config, floorTexture);
-  const updateDecor = createDecor(scene);
+  // This scene's own copies of the shared art, so disposing it never breaks another scene.
+  const sceneTextures: SceneTextures | null =
+    art === null ? null : cloneArtTextures(art, renderer.capabilities.getMaxAnisotropy());
+  const look: ArtLook | null =
+    art === null || sceneTextures === null
+      ? null
+      : { manifest: art.manifest, textures: sceneTextures.textures };
+
+  // The floor and its inlay bands scroll together by moving this group, never a texture offset.
+  const floor = new Group();
+  scene.add(floor);
+  let floorPeriod = PROCEDURAL_TILE_METRES;
+  let proceduralFloor: CanvasTexture | null = null;
+  if (look !== null) {
+    const tile = look.manifest.floorTile;
+    const band = look.manifest.floorBand;
+    floorPeriod = tile.metres[1];
+    const tileTexture = look.textures['floor-tile'];
+    floor.add(
+      new Mesh(
+        // u = 0 on a lane edge, so the grout (every half texture, one lane width) marks the lanes.
+        floorStrip(
+          -FLOOR_WIDTH / 2,
+          FLOOR_WIDTH / 2,
+          tile.metres[0],
+          floorPeriod,
+          config.laneWidth / 2,
+          0,
+          floorPeriod,
+        ),
+        new MeshLambertMaterial({ map: tileTexture }),
+      ),
+    );
+    floor.add(
+      new Mesh(
+        bandStrips(config, band.metres[1], floorPeriod),
+        new MeshLambertMaterial({ map: look.textures['floor-band'] }),
+      ),
+    );
+  } else {
+    proceduralFloor = createFloorTexture();
+    proceduralFloor.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), 8);
+    floor.add(
+      new Mesh(
+        floorStrip(
+          -FLOOR_WIDTH / 2,
+          FLOOR_WIDTH / 2,
+          PROCEDURAL_TILE_METRES,
+          PROCEDURAL_TILE_METRES,
+          0,
+          0,
+          PROCEDURAL_TILE_METRES,
+        ),
+        new MeshLambertMaterial({ map: proceduralFloor }),
+      ),
+    );
+    floor.add(
+      new Mesh(
+        bandStrips(config, PROCEDURAL_TILE_METRES, PROCEDURAL_TILE_METRES),
+        new MeshLambertMaterial({ color: TERRACOTTA }),
+      ),
+    );
+  }
+  // The floor is drawn first and never writes depth. The bench and bucket are drawn from above,
+  // so they stand on their far feet and wheels and the near ones reach just below the floor
+  // line; this lets those near parts show over the floor instead of being cut off.
+  floor.traverse((object) => {
+    if (!(object instanceof Mesh)) return;
+    // `instanceof` narrows to Mesh<any, any>; the floor is built from plain meshes.
+    const mesh = object as Mesh<BufferGeometry, Material | Material[]>;
+    mesh.renderOrder = -1;
+    for (const material of [mesh.material].flat()) material.depthWrite = false;
+  });
+
+  buildCorridor(scene, config, look !== null);
+  const decorProps: DecorMeshes | null =
+    look === null
+      ? null
+      : {
+          plant: cutoutMesh(look, 'plant', DECOR_COUNT * 2),
+          bench: cutoutMesh(look, 'bench', DECOR_COUNT * 2),
+          'sale-board': cutoutMesh(look, 'sale-board', DECOR_COUNT * 2),
+        };
+  const updateDecor = createDecor(scene, decorProps);
 
   // Track items: one instanced mesh per kind (AGENTS.md section 7, rule 3).
-  const meshes: Record<EntityKind, InstancedMesh> = {
-    COIN: new InstancedMesh(
-      coinModel(),
-      new MeshLambertMaterial({ vertexColors: true, emissive: '#5c3b00' }),
-      CAPACITY.COIN,
-    ),
-    WET_FLOOR: new InstancedMesh(
-      wetFloorModel(),
-      new MeshLambertMaterial({ vertexColors: true }),
-      CAPACITY.WET_FLOOR,
-    ),
-    CART: new InstancedMesh(
-      cartModel(),
-      new MeshLambertMaterial({ vertexColors: true }),
-      CAPACITY.CART,
-    ),
-    BANNER: new InstancedMesh(
-      bannerModel(),
-      new MeshLambertMaterial({ vertexColors: true }),
-      CAPACITY.BANNER,
-    ),
-    BAG: new InstancedMesh(
-      bagModel(),
-      new MeshLambertMaterial({ vertexColors: true, emissive: '#ff3d96', emissiveIntensity: 0.55 }),
-      CAPACITY.BAG,
-    ),
-  };
+  const looks = entityLooks(look);
   const halo = new InstancedMesh(
     new SphereGeometry(0.62, 14, 10).translate(0, 0.45, 0),
     new MeshBasicMaterial({
@@ -475,7 +815,13 @@ export function createMallScene(container: HTMLElement, config: Readonly<RunnerC
     }),
     CAPACITY.BAG,
   );
-  for (const mesh of [...Object.values(meshes), halo]) {
+  const entityMeshes: InstancedMesh[] = [halo];
+  for (const kind of ENTITY_KINDS) {
+    const { mesh, decal } = looks[kind];
+    entityMeshes.push(mesh);
+    if (decal !== null) entityMeshes.push(decal);
+  }
+  for (const mesh of entityMeshes) {
     // Instances move every frame, so a bounding sphere from one frame would cull wrongly.
     mesh.frustumCulled = false;
     mesh.count = 0;
@@ -501,7 +847,14 @@ export function createMallScene(container: HTMLElement, config: Readonly<RunnerC
   );
   scene.add(shadow);
 
-  const figure = createRunnerFigure();
+  const figure: RunnerFigure =
+    look === null
+      ? createRunnerFigure()
+      : createSpriteRunnerFigure(
+          look.textures.runner,
+          runnerQuads(look.manifest.runner),
+          reducedMotion,
+        );
   scene.add(figure.root);
 
   // Scratch objects, reused every frame.
@@ -516,6 +869,8 @@ export function createMallScene(container: HTMLElement, config: Readonly<RunnerC
   const api: MallScene = {
     showOffers: true,
     offer: { visible: false, x: 0, y: 0 },
+    usesArt: look !== null,
+    stats: { drawCalls: 0, triangles: 0 },
 
     resize: (width, height) => {
       if (width <= 0 || height <= 0) return;
@@ -546,9 +901,11 @@ export function createMallScene(container: HTMLElement, config: Readonly<RunnerC
       camera.position.set(player.x * 0.45, 1.6 + cameraDistance * 0.34, cameraDistance);
       camera.lookAt(player.x * 0.3, 1.1, -14);
       camera.updateMatrixWorld();
+      const cameraX = camera.position.x;
+      const cameraZ = camera.position.z;
 
-      floorTexture.offset.y = (distance / FLOOR_TILE_METRES) % 1;
-      updateDecor(distance);
+      floor.position.z = distance % floorPeriod;
+      updateDecor(distance, cameraX, cameraZ);
 
       for (let k = 0; k < ENTITY_KINDS.length; k++) counts[ENTITY_KINDS[k] as EntityKind] = 0;
       let bag: TrackEntity | null = null;
@@ -559,32 +916,57 @@ export function createMallScene(container: HTMLElement, config: Readonly<RunnerC
         if (kind === 'BAG' && !api.showOffers) continue;
         const index = counts[kind];
         if (index >= CAPACITY[kind]) continue;
+        const entityLook = looks[kind];
 
+        const x = laneX(entity.lane, config);
+        const z = -(entity.z - ahead);
         let y = entity.y;
-        let spin = 0;
+        let yaw = entityLook.billboard ? yawToward(x, z, cameraX, cameraZ) : 0;
         let tilt = 0;
+        let scale = 1;
         if (kind === 'COIN') {
-          spin = time * 3.5 + entity.id * 0.6;
+          if (!entityLook.billboard) {
+            if (!reducedMotion) yaw = time * 3.5 + entity.id * 0.6;
+          } else if (!reducedMotion) {
+            // A gentle bob and shimmer; the coin always faces the camera.
+            y += Math.sin(time * 2.6 + entity.id * 0.7) * 0.05;
+            scale = 1 + Math.sin(time * 5 + entity.id) * 0.03;
+          }
         } else if (kind === 'BAG') {
-          y += Math.sin(time * 3) * 0.08;
-          spin = Math.sin(time * 1.5) * 0.5;
+          if (!reducedMotion) {
+            y += Math.sin(time * 3) * 0.08;
+            yaw = Math.sin(time * 1.5) * 0.5;
+          }
           bag = entity;
         } else if (entity.hit) {
           // An obstacle the player ran into stays knocked askew.
           tilt = 0.4;
         }
-        dummy.position.set(laneX(entity.lane, config), y, -(entity.z - ahead));
-        dummy.rotation.set(0, spin, tilt);
+        dummy.position.set(x, y, z);
+        dummy.rotation.set(0, yaw, tilt);
+        dummy.scale.setScalar(scale);
         dummy.updateMatrix();
-        meshes[kind].setMatrixAt(index, dummy.matrix);
+        entityLook.mesh.setMatrixAt(index, dummy.matrix);
         if (kind === 'BAG') halo.setMatrixAt(index, dummy.matrix);
+        if (entityLook.decal !== null) {
+          dummy.position.set(x, 0.014, z);
+          dummy.rotation.set(0, 0, 0);
+          dummy.scale.setScalar(1);
+          dummy.updateMatrix();
+          entityLook.decal.setMatrixAt(index, dummy.matrix);
+        }
         counts[kind] = index + 1;
       }
+      dummy.scale.setScalar(1);
       for (let k = 0; k < ENTITY_KINDS.length; k++) {
         const kind = ENTITY_KINDS[k] as EntityKind;
-        const mesh = meshes[kind];
+        const { mesh, decal } = looks[kind];
         mesh.count = counts[kind];
         mesh.instanceMatrix.needsUpdate = true;
+        if (decal !== null) {
+          decal.count = counts[kind];
+          decal.instanceMatrix.needsUpdate = true;
+        }
       }
       halo.count = counts.BAG;
       halo.instanceMatrix.needsUpdate = true;
@@ -630,6 +1012,8 @@ export function createMallScene(container: HTMLElement, config: Readonly<RunnerC
       shadow.scale.setScalar(1 - Math.min(player.y, 2) * 0.25);
 
       renderer.render(scene, camera);
+      api.stats.drawCalls = renderer.info.render.calls;
+      api.stats.triangles = renderer.info.render.triangles;
     },
 
     dispose: () => {
@@ -642,7 +1026,10 @@ export function createMallScene(container: HTMLElement, config: Readonly<RunnerC
         const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
         for (const material of materials) material.dispose();
       });
-      floorTexture.dispose();
+      // Sprite frames that are not on screen are outside the scene graph.
+      figure.dispose?.();
+      proceduralFloor?.dispose();
+      sceneTextures?.dispose();
       renderer.dispose();
       canvas.remove();
     },

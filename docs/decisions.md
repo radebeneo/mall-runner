@@ -358,3 +358,114 @@ other scenario variants from AGENTS.md section 5 come later.
   build. Every dependency supports Node 24; the strictest is jsdom (`^24.15.0`). We did not use
   `24.x`, because pnpm refuses to install when the running Node does not match the root
   `engines`, which would break local Node 26. `.nvmrc` and CI stay on Node 26.
+
+## 2026-10-26 — Mall art pass (runner scene and app background)
+
+A visual pass before milestone 6. Gameplay, finance logic, scenarios, copy, disclaimers, the HUD
+and the pause, crash, retry and decisions-only flows are unchanged. Offers still open only from
+the pause card, and there is still no month timer.
+
+### Assets (`apps/web/src/assets/mall/`)
+
+- `scripts/prepare-mall-assets.py` builds every runtime file from the untouched sources in
+  `3D-assets/` and writes `manifest.json`. Rerun it rather than editing the outputs.
+- Cut-outs get real alpha. The painted checkerboard is removed, including enclosed gaps, without
+  losing real white or grey detail. Edge colour is decontaminated, resizing is premultiplied and
+  colour bleeds into the padding, so there are no halos on light or dark backgrounds.
+- 11 files, 459.6 KiB to download. Scene textures are about 10.8 MiB on the GPU, with mipmaps.
+  Each background is about 3 MiB decoded, and only one is used at a time.
+
+| File                                           | Size                 | Used for                       |
+| ---------------------------------------------- | -------------------- | ------------------------------ |
+| `coin.webp`                                    | 17.7 KiB             | `COIN` billboard               |
+| `bucket.webp`                                  | 32.4 KiB             | `CART` (now a wheeled bucket)  |
+| `wet-floor.webp`                               | 27.8 KiB             | `WET_FLOOR`                    |
+| `plant.webp`, `bench.webp`, `sale-board.webp`  | 41.9, 40.2, 13.3 KiB | Side decor                     |
+| `runner-atlas.webp`                            | 124.0 KiB            | Six-frame runner (800 × 984)   |
+| `floor-tile.webp`, `floor-band.webp`           | 13.2, 2.5 KiB        | Generated floor and side bands |
+| `mall-background-desktop.webp`, `-mobile.webp` | 81.7, 65.0 KiB       | CSS app background             |
+
+- `floor.png` is a perspective illustration, so it can't be tiled. A seamless 2 × 2 cream tile
+  (3.2 m square, 160 px per metre) and a 0.4 m terracotta and charcoal band were generated from
+  its palette. The floor's u = 0 sits at x = laneWidth / 2, so grout lines fall on lane edges.
+- The backgrounds come from `mall-background.png`, whose floor had a grey checkerboard painted
+  in (an export artefact: real stone tiles survive only near the shopfronts). The owner chose to
+  keep replacing those pixels with the generated floor in perspective; shops, pillars and benches
+  are untouched. There is a 9:16 crop for phones and a 16:9 crop for wide screens.
+  `mall-background.jpg` (HUD baked in) was removed.
+- The coin is `coin-3d.png` exactly as supplied, emblem included (owner decision, 2026-11-06).
+  Only its edges are cleaned and it is resized. The earlier plain-star replacement was dropped.
+- The bench and bucket are drawn from above, so their far feet and wheels sit higher in the image
+  than the near ones. Standing them on the lowest pixel left the far ones floating. The script's
+  `ground_contact` finds each foot or wheel and puts the pivot on the highest one; the manifest
+  records them as `groundContacts`. The near ones reach below the floor line (bench about 0.5 m,
+  bucket about 0.3 m), so the floor is drawn first (`renderOrder = -1`) without writing depth, and
+  those parts show over it.
+- The sale board was rebuilt without text; its light-grey edge is the metal frame, not a halo.
+  The bucket keeps its small "CAUTION" sticker. Shop signs stay text-free.
+- These are prototype assets, not signed-off production art.
+- `manifest.json` is in `.prettierignore` because Python's JSON output and Prettier disagree on
+  short arrays. `mall-manifest.ts` validates it with a small hand-written parser (no Zod in the
+  web app) and derives `rectQuad`, `propQuad` and `runnerQuads` from it.
+
+### Scene
+
+- Hybrid rendering: a real 3D corridor (floor, shopfronts on two levels with recessed glazed or
+  display-bay entrances, balconies with glass rails, pillars, lamps, skylight ribs) plus
+  camera-facing cut-out billboards. There is no screenshot or stretched backdrop.
+- Cut-outs use `MeshBasicMaterial` (unlit, fogged), `alphaTest: 0.5`, `alphaToCoverage` and
+  front faces only. Billboards turn to the camera with `yawToward`.
+- Repeats are `InstancedMesh`. Atlas frames change by swapping prebuilt geometry with its own UVs;
+  texture offsets are never mutated, so textures stay shared.
+- Entity changes:
+  - `CART` art is the wheeled bucket, normalised to 1.2 w × 1.5 h × 1.4 d with a ground pivot
+    and a shadow decal. Its mechanics are unchanged.
+  - `WET_FLOOR` art and hitbox are now 1.0 m tall (was 0.7 m), because at 0.7 m the sign could be
+    mistaken for a coin. It has a puddle decal at hitbox width. The jump (velocity 8, gravity 24)
+    peaks at 1.33 m and stays above 1.0 m for about 0.33 s, so it is still cleared by jumping. The
+    procedural fallback model is scaled to the same height.
+  - `COIN` keeps its entity, hitbox and points. It only faces the camera, bobs and shimmers, so
+    its edge and mirrored back never show.
+  - `BANNER` stays a hanging banner: teal cloth with a cream stripe on a charcoal rod with long
+    cords, keeping its 1.1 m clearance readable.
+  - The bag is emissive pink with a halo.
+- Floor and bands scroll by moving their group (`position.z = distance % period`) instead of a
+  texture offset. The strip runs one period past the far end, so the wrap has no seam or pop.
+- Decor uses a hash of the slot index (`decorAt`), not the track's seeded RNG, so gameplay
+  randomness is untouched. Every 8 slots hold 3 plants, 2 benches, 1 sale board and 2 gaps.
+  Props sit at x 3.9 to 4.9, outside `propClearance` (2.8), so they never look like they block
+  a lane.
+
+### Runner sprite
+
+- Frames come from alpha bounds, not equal cells, and are packed into a padded atlas with one
+  ground pivot per cell. 460 px of standing height maps to 1.75 m.
+- The run cycle follows distance (one cycle every 4.8 m), so it freezes when paused or crashed.
+- The source has only run frames, so other poses are adapted:
+  - Jump: frame 2 while rising, frame 5 while falling.
+  - Roll: squashed to 55% height.
+  - Stumble: a wobble (off with reduced motion) plus the grace-period flash.
+  - Crash: the current frame held and tipped by 1.3 rad.
+- `createRunnerFigure` keeps its contract; the procedural figure is still the fallback.
+
+### Loading and lifecycle
+
+- `preloadMallArt()` starts in `main.tsx`, outside the game loop. `RunScreen` takes
+  `loadedMallArt()` when a run starts. Until the art has loaded, or if it fails (a warning is
+  logged), the run uses the procedural mall, so visuals never swap mid-run and no hazard is ever
+  invisible.
+- Each scene clones the textures it uses (`cloneArtTextures`) and disposes only those clones, so
+  StrictMode remounts and late callbacks can't break the shared source images.
+- `?perf` shows a frame-time and draw-call readout (`frame-timer.ts`). It restarts when the loop
+  resumes.
+- The app background is static CSS: the mobile crop by default and the desktop crop at
+  `min-aspect-ratio: 4/5`. Nothing animates behind decisions-only mode.
+
+### Verification and follow-ups
+
+- 403 tests in 38 files pass (38 new). Coverage is unchanged: 100% statements, functions and
+  lines, 99.8% branches.
+- The main chunk is 911.8 kB (251.9 kB gzipped), 25.3 kB (11.3 kB gzipped) more than before.
+- CM Browser couldn't open in this session, so the art pass hasn't been checked in real WebGL.
+  Frame times, draw calls, scroll direction, seams and prop clearance still need checking with
+  `?perf` at 390 px portrait, on desktop, in mobile landscape and on a low-end Android device.

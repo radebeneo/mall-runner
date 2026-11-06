@@ -1,0 +1,463 @@
+{
+  "version": 1,
+  "generatedBy": "scripts/prepare-mall-assets.py",
+  "assets": [
+    {
+      "id": "coin",
+      "file": "coin.webp",
+      "width": 255,
+      "height": 272,
+      "bytes": 18100,
+      "gpuBytesEstimate": 369920,
+      "source": "3D-assets/coin-3d.png",
+      "use": "COIN collectible billboard",
+      "sourceBox": [
+        98,
+        62,
+        820,
+        880
+      ],
+      "contentRect": [
+        8,
+        8,
+        239,
+        256
+      ],
+      "pivot": [
+        127.5,
+        264
+      ],
+      "worldSize": {
+        "axis": "width",
+        "metres": 0.62
+      },
+      "notes": [
+        "Edge colours decontaminated (bled from the solid interior); premultiplied resize.",
+        "Source alpha is genuine; 46% of source pixels are fully transparent.",
+        "Artwork used exactly as supplied; only edges cleaned and resized."
+      ]
+    },
+    {
+      "id": "bucket",
+      "file": "bucket.webp",
+      "width": 361,
+      "height": 528,
+      "bytes": 33200,
+      "gpuBytesEstimate": 1016576,
+      "source": "3D-assets/wheeled-bucket.png",
+      "use": "CART obstacle billboard",
+      "sourceBox": [
+        231,
+        58,
+        580,
+        861
+      ],
+      "contentRect": [
+        8,
+        8,
+        345,
+        512
+      ],
+      "pivot": [
+        180.5,
+        424.9
+      ],
+      "worldSize": {
+        "axis": "height",
+        "metres": 1.5
+      },
+      "notes": [
+        "Edge colours decontaminated (bled from the solid interior); premultiplied resize.",
+        "Source alpha is genuine; 73% of source pixels are fully transparent.",
+        "Drawn from above: stands on its highest foot or wheel, so none float; the nearer ones reach below the floor line and are drawn over the floor."
+      ],
+      "groundContacts": [
+        {
+          "x": [
+            281,
+            296
+          ],
+          "bottom": 758
+        },
+        {
+          "x": [
+            476,
+            487
+          ],
+          "bottom": 917
+        },
+        {
+          "x": [
+            752,
+            766
+          ],
+          "bottom": 775
+        }
+      ]
+    },
+    {
+      "id": "wet-floor",
+      "file": "wet-floor.webp",
+      "width": 326,
+      "height": 528,
+      "bytes": 28450,
+      "gpuBytesEstimate": 918016,
+      "source": "3D-assets/wet-floor-sign.png",
+      "use": "WET_FLOOR obstacle billboard",
+      "sourceBox": [
+        538,
+        224,
+        946,
+        1560
+      ],
+      "contentRect": [
+        8,
+        8,
+        310,
+        512
+      ],
+      "pivot": [
+        163.0,
+        520
+      ],
+      "worldSize": {
+        "axis": "height",
+        "metres": 1.0
+      },
+      "notes": [
+        "Edge colours decontaminated (bled from the solid interior); premultiplied resize.",
+        "Source alpha is genuine; 74% of source pixels are fully transparent."
+      ]
+    },
+    {
+      "id": "plant",
+      "file": "plant.webp",
+      "width": 425,
+      "height": 528,
+      "bytes": 42940,
+      "gpuBytesEstimate": 1196800,
+      "source": "3D-assets/plant.png",
+      "use": "Decorative planter beside storefronts",
+      "sourceBox": [
+        153,
+        53,
+        727,
+        911
+      ],
+      "contentRect": [
+        8,
+        8,
+        409,
+        512
+      ],
+      "pivot": [
+        212.5,
+        520
+      ],
+      "worldSize": {
+        "axis": "height",
+        "metres": 1.7
+      },
+      "notes": [
+        "Edge colours decontaminated (bled from the solid interior); premultiplied resize.",
+        "Source alpha is genuine; 73% of source pixels are fully transparent."
+      ]
+    },
+    {
+      "id": "bench",
+      "file": "bench.webp",
+      "width": 519,
+      "height": 436,
+      "bytes": 41158,
+      "gpuBytesEstimate": 1206848,
+      "source": "3D-assets/bench.png",
+      "use": "Decorative bench in seating areas",
+      "sourceBox": [
+        94,
+        157,
+        882,
+        737
+      ],
+      "contentRect": [
+        8,
+        8,
+        503,
+        420
+      ],
+      "pivot": [
+        259.5,
+        292.9
+      ],
+      "worldSize": {
+        "axis": "width",
+        "metres": 1.9
+      },
+      "notes": [
+        "Edge colours decontaminated (bled from the solid interior); premultiplied resize.",
+        "Source alpha is genuine; 69% of source pixels are fully transparent.",
+        "Drawn from above: stands on its highest foot or wheel, so none float; the nearer ones reach below the floor line and are drawn over the floor."
+      ],
+      "groundContacts": [
+        {
+          "x": [
+            112,
+            118
+          ],
+          "bottom": 743
+        },
+        {
+          "x": [
+            259,
+            265
+          ],
+          "bottom": 891
+        },
+        {
+          "x": [
+            928,
+            934
+          ],
+          "bottom": 656
+        }
+      ]
+    },
+    {
+      "id": "sale-board",
+      "file": "sale-board.webp",
+      "width": 299,
+      "height": 528,
+      "bytes": 13598,
+      "gpuBytesEstimate": 841984,
+      "source": "3D-assets/sale-board.png",
+      "use": "Decorative freestanding board beside shops",
+      "sourceBox": [
+        269,
+        81,
+        486,
+        879
+      ],
+      "contentRect": [
+        8,
+        8,
+        283,
+        512
+      ],
+      "pivot": [
+        149.5,
+        520
+      ],
+      "worldSize": {
+        "axis": "height",
+        "metres": 1.3
+      },
+      "notes": [
+        "Edge colours decontaminated (bled from the solid interior); premultiplied resize.",
+        "Source alpha is genuine; 65% of source pixels are fully transparent.",
+        "Lettering removed from the panel and replaced by a plain tag shape (text-free)."
+      ],
+      "panelColour": [
+        0.548,
+        0.161,
+        0.323
+      ],
+      "letteringRatio": 0.552
+    },
+    {
+      "id": "runner",
+      "file": "runner-atlas.webp",
+      "width": 800,
+      "height": 984,
+      "bytes": 126946,
+      "gpuBytesEstimate": 4198400,
+      "source": "3D-assets/runner.png",
+      "use": "Player run cycle, rear view; frames in reading order of the source sheet",
+      "frames": [
+        {
+          "x": 8,
+          "y": 8,
+          "w": 256,
+          "h": 480,
+          "source": [
+            89,
+            49,
+            187,
+            427
+          ]
+        },
+        {
+          "x": 272,
+          "y": 8,
+          "w": 256,
+          "h": 480,
+          "source": [
+            384,
+            54,
+            205,
+            436
+          ]
+        },
+        {
+          "x": 536,
+          "y": 8,
+          "w": 256,
+          "h": 480,
+          "source": [
+            718,
+            49,
+            198,
+            367
+          ]
+        },
+        {
+          "x": 8,
+          "y": 496,
+          "w": 256,
+          "h": 480,
+          "source": [
+            103,
+            525,
+            192,
+            443
+          ]
+        },
+        {
+          "x": 272,
+          "y": 496,
+          "w": 256,
+          "h": 480,
+          "source": [
+            401,
+            533,
+            190,
+            419
+          ]
+        },
+        {
+          "x": 536,
+          "y": 496,
+          "w": 256,
+          "h": 480,
+          "source": [
+            714,
+            534,
+            203,
+            370
+          ]
+        }
+      ],
+      "pivot": [
+        128.0,
+        470.0
+      ],
+      "standingHeightPx": 460.0,
+      "headWidthSpread": 1.044,
+      "scaleNormalised": false,
+      "worldSize": {
+        "axis": "standingHeight",
+        "metres": 1.75
+      },
+      "notes": [
+        "Frames found from alpha bounds, not equal cells.",
+        "Head tops and torso centres aligned; one shared ground pivot per cell.",
+        "Frame order is the source sheet's reading order (assumed to be the cycle order).",
+        "No jump, roll or crash poses exist in the source; the scene adapts these frames."
+      ]
+    },
+    {
+      "id": "floor-tile",
+      "file": "floor-tile.webp",
+      "width": 512,
+      "height": 512,
+      "bytes": 13472,
+      "gpuBytesEstimate": 1398101,
+      "source": "generated (palette sampled from 3D-assets/floor.png)",
+      "use": "Seamless top-down floor; 2 x 2 tiles of one lane width each",
+      "metres": [
+        3.2,
+        3.2
+      ],
+      "palette": {
+        "cream": [
+          0.875,
+          0.804,
+          0.733
+        ],
+        "terracotta": [
+          0.741,
+          0.522,
+          0.369
+        ],
+        "charcoal": [
+          0.2,
+          0.2,
+          0.21
+        ]
+      },
+      "notes": [
+        "floor.png is a perspective illustration, so it is not mapped onto the floor.",
+        "Generated with periodic noise, so it tiles without seams."
+      ]
+    },
+    {
+      "id": "floor-band",
+      "file": "floor-band.webp",
+      "width": 64,
+      "height": 512,
+      "bytes": 2516,
+      "gpuBytesEstimate": 174762,
+      "source": "generated (palette sampled from 3D-assets/floor.png)",
+      "use": "Terracotta and charcoal inlay band beside the running area",
+      "metres": [
+        0.4,
+        3.2
+      ],
+      "notes": [
+        "Seamless along its length; diamonds line up with the floor grout."
+      ]
+    },
+    {
+      "id": "background-desktop",
+      "file": "mall-background-desktop.webp",
+      "width": 1024,
+      "height": 576,
+      "bytes": 83616,
+      "gpuBytesEstimate": 3145728,
+      "source": "3D-assets/mall-background.png",
+      "use": "App background behind decision screens (CSS, no UI baked in); 16:9 landscape crop for wide screens",
+      "cropBox": [
+        0,
+        192,
+        1024,
+        768
+      ],
+      "replacedFraction": 0.3816,
+      "horizonY": 451.3,
+      "notes": [
+        "The source has a grey checkerboard painted into the floor; those pixels are replaced with the generated floor in perspective.",
+        "horizonY is in the uncropped 1024 px source; subtract cropBox[1] for this file."
+      ]
+    },
+    {
+      "id": "background-mobile",
+      "file": "mall-background-mobile.webp",
+      "width": 576,
+      "height": 1024,
+      "bytes": 66592,
+      "gpuBytesEstimate": 3145728,
+      "source": "3D-assets/mall-background.png",
+      "use": "App background behind decision screens (CSS, no UI baked in); 9:16 portrait crop for phones",
+      "cropBox": [
+        224,
+        0,
+        800,
+        1024
+      ],
+      "replacedFraction": 0.3816,
+      "horizonY": 451.3,
+      "notes": [
+        "The source has a grey checkerboard painted into the floor; those pixels are replaced with the generated floor in perspective.",
+        "horizonY is in the uncropped 1024 px source; subtract cropBox[1] for this file."
+      ]
+    }
+  ]
+}

@@ -19,6 +19,8 @@ import { Button, Disclaimer, Hud, Icon, ScreenPanel } from '@credit-runner/ui';
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import runnerAvatar from '../assets/art/runner-avatar.png';
+import { createFrameSummary, createFrameTimer, formatPerf } from '../scenes/frame-timer';
+import { loadedMallArt } from '../scenes/mall-art';
 import { createMallScene } from '../scenes/mall-scene';
 import type { MallScene } from '../scenes/mall-scene';
 import {
@@ -36,6 +38,21 @@ type Overlay = 'NONE' | 'PAUSED' | 'CRASHED' | 'UNSUPPORTED';
 
 /** How long the stumble warning stays up, in milliseconds. */
 const STUMBLE_NOTICE_MS = 2500;
+
+/** How often the `?perf` readout is rewritten, in milliseconds. */
+const PERF_INTERVAL_MS = 1000;
+
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
+}
+
+/** `?perf` in the address shows frame times and draw calls, for checking on devices. */
+function perfRequested(): boolean {
+  return new URLSearchParams(window.location.search).has('perf');
+}
 
 /** A card over the paused or crashed scene. */
 function OverlayCard({ label, children }: { label: string; children: ReactNode }) {
@@ -65,9 +82,13 @@ export function RunScreen({ session }: { session: Session }) {
 
   const surfaceRef = useRef<HTMLDivElement>(null);
   const offerLabelRef = useRef<HTMLDivElement>(null);
+  const perfRef = useRef<HTMLParagraphElement>(null);
+  const [showPerf] = useState(perfRequested);
   const runnerRef = useRef<RunnerState | null>(null);
   const sceneRef = useRef<MallScene | null>(null);
   const loopRef = useRef<GameLoop | null>(null);
+  /** Forgets perf samples when the loop restarts, so a pause is not counted as a long frame. */
+  const restartPerfRef = useRef<(() => void) | null>(null);
   const overlayRef = useRef<Overlay>('NONE');
   const hasOfferRef = useRef(hasOffer);
   const seedRef = useRef(session.cycle.monthIndex + 1);
@@ -80,7 +101,11 @@ export function RunScreen({ session }: { session: Session }) {
 
     let scene: MallScene;
     try {
-      scene = createMallScene(surface, DEFAULT_RUNNER_CONFIG);
+      // The art is used only if it has already loaded, so it never swaps in mid-run.
+      scene = createMallScene(surface, DEFAULT_RUNNER_CONFIG, {
+        art: loadedMallArt(),
+        reducedMotion: prefersReducedMotion(),
+      });
     } catch {
       setOverlay('UNSUPPORTED');
       return undefined;
@@ -111,6 +136,26 @@ export function RunScreen({ session }: { session: Session }) {
     let labelX = Number.NaN;
     let labelY = Number.NaN;
 
+    // The optional perf readout, written to the DOM about once a second.
+    const perf = perfRef.current;
+    const timer = perf === null ? null : createFrameTimer();
+    const summary = createFrameSummary();
+    let perfWritten = 0;
+    const writePerf = (now: number): void => {
+      if (perf === null || timer === null) return;
+      timer.tick(now);
+      if (now - perfWritten < PERF_INTERVAL_MS) return;
+      perfWritten = now;
+      perf.textContent = formatPerf(timer.summary(summary), {
+        drawCalls: scene.stats.drawCalls,
+        triangles: scene.stats.triangles,
+        usesArt: scene.usesArt,
+        pixelRatio: Math.min(window.devicePixelRatio, 2),
+        width: surface.clientWidth,
+        height: surface.clientHeight,
+      });
+    };
+
     const clock = createStepClock();
     const loop = createLoop(
       {
@@ -119,6 +164,7 @@ export function RunScreen({ session }: { session: Session }) {
         },
         render: (alpha) => {
           scene.render(runner, alpha * clock.step);
+          if (timer !== null) writePerf(performance.now());
           if (label === null) return;
           const marker = scene.offer;
           if (marker.visible !== labelShown) {
@@ -168,6 +214,7 @@ export function RunScreen({ session }: { session: Session }) {
     runnerRef.current = runner;
     sceneRef.current = scene;
     loopRef.current = loop;
+    restartPerfRef.current = () => timer?.restart();
     loop.start();
 
     return () => {
@@ -181,6 +228,7 @@ export function RunScreen({ session }: { session: Session }) {
       runnerRef.current = null;
       sceneRef.current = null;
       loopRef.current = null;
+      restartPerfRef.current = null;
     };
   }, []);
 
@@ -195,6 +243,7 @@ export function RunScreen({ session }: { session: Session }) {
       loop.stop();
       return undefined;
     }
+    restartPerfRef.current?.();
     loop.start();
     return attachInput({ surface, keyboard: window }, (action) => {
       queueAction(runner, action);
@@ -268,6 +317,15 @@ export function RunScreen({ session }: { session: Session }) {
           }}
         />
       </div>
+
+      {showPerf && (
+        <p
+          ref={perfRef}
+          aria-hidden="true"
+          data-testid="perf-readout"
+          className="pointer-events-none absolute left-2 top-28 z-10 max-w-[calc(100%-1rem)] rounded-md bg-hud/80 px-2 py-1 font-mono text-[11px] leading-tight text-white"
+        />
+      )}
 
       <div
         ref={offerLabelRef}

@@ -15,6 +15,8 @@ export interface RunnerFigure {
     distance: number,
     time: number,
   ) => void;
+  /** Frees resources the scene graph does not hold, such as unused sprite frames. */
+  dispose?: () => void;
 }
 
 export function createRunnerFigure(): RunnerFigure {
