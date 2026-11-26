@@ -61,15 +61,29 @@
     -webkit-text-size-adjust: 100%;
   }
 
+  /*
+   * The skylit mall behind the decision screens: a portrait crop for phones and a landscape crop
+   * for wider screens (assets/mall, from scripts/prepare-mall-assets.py). No UI is baked in, and
+   * nothing animates, so decisions-only play stays still.
+   */
   body {
     min-height: 100dvh;
     background:
       linear-gradient(180deg, rgb(20 22 26 / 0.35) 0%, rgb(20 22 26 / 0.55) 100%),
-      url('./assets/art/mall-background.jpg') center / cover fixed,
+      url('./assets/mall/mall-background-mobile.webp') center 40% / cover fixed,
       var(--color-mall);
     font-family: var(--font-sans);
     color: var(--color-ink);
     -webkit-font-smoothing: antialiased;
+  }
+
+  @media (min-aspect-ratio: 4/5) {
+    body {
+      background:
+        linear-gradient(180deg, rgb(20 22 26 / 0.35) 0%, rgb(20 22 26 / 0.55) 100%),
+        url('./assets/mall/mall-background-desktop.webp') center 45% / cover fixed,
+        var(--color-mall);
+    }
   }
 }
 

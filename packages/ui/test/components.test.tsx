@@ -7,6 +7,7 @@ import {
   Button,
   Callout,
   ChoiceGroup,
+  CoinIcon,
   DEFAULT_DISCLAIMER,
   DateTimeline,
   Disclaimer,
@@ -446,5 +447,18 @@ describe('DateTimeline, Disclosure, UsageRing and SideCard', () => {
     const card = screen.getByRole('region', { name: 'Emergency savings' });
     expect(card.textContent).toContain('R500');
     expect(card.textContent).toContain('Kept for surprises.');
+  });
+
+  it('draws the points coin as the supplied coin art, hidden from screen readers', () => {
+    const { container } = render(<CoinIcon className="size-12" />);
+    const img = container.querySelector('img');
+    expect(img).not.toBeNull();
+    expect(img?.getAttribute('src')).toMatch(/coin\.webp/);
+    expect(img?.getAttribute('alt')).toBe('');
+    expect(img?.getAttribute('aria-hidden')).toBe('true');
+    expect(img?.className).toContain('size-12');
+    // The old star SVG is gone, and there is no text that could read as currency.
+    expect(container.querySelector('svg')).toBeNull();
+    expect(container.textContent).toBe('');
   });
 });
